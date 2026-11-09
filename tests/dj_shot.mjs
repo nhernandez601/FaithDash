@@ -1,0 +1,20 @@
+import { chromium } from 'playwright-core';
+import { spawn } from 'child_process';
+const srv = spawn('npx', ['vite', 'preview', '--port', '4184', '--strictPort'], { stdio: 'ignore' });
+await new Promise((r) => setTimeout(r, 2500));
+const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=swiftshader', '--ignore-gpu-blocklist', '--no-sandbox'] });
+const W = Number(process.argv[2] || 1280), H = Number(process.argv[3] || 720);
+const p = await b.newPage({ viewport: { width: W, height: H } });
+await p.goto('http://localhost:4184/'); await p.waitForTimeout(1200);
+await p.fill('#nm', 'Player1'); await p.click('[data-act=start]'); await p.waitForTimeout(400);
+await p.screenshot({ path: `tests/shots/v3_howto_${W}.png` });
+await p.click('[data-act=done]'); await p.waitForTimeout(500);
+await p.evaluate(() => { __fd.app.sd.lastLevel = 1; });
+await p.click('[data-act=play]'); await p.waitForTimeout(200);
+await p.evaluate(() => {
+  const a = __fd.app; a.hold = true; let g = 0; while (a.fsm.state !== 'PLAYING' && g++ < 3000) a.tick(1 / 120);
+  const r = a.run; r.p.coinsUsed.fill(1); r.p.x = 60; r.p.t = 60 / r.level.speed; r.p.djUntil = r.p.t + 11.5; r.p.invUntil = -1;
+  for (let i = 0; i < 40; i++) a.tick(1 / 120); a.run.press(); for (let i = 0; i < 30; i++) a.tick(1 / 120);
+});
+await p.waitForTimeout(400); await p.screenshot({ path: `tests/shots/v3_dj_${W}.png` });
+await b.close(); srv.kill();
