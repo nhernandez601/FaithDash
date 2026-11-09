@@ -144,12 +144,19 @@ function updateDynamic(t) {
   }
 }
 const TMP = { x: 0, y: 0 };
+const CHASE_ANGLE = 45; // degrees the chase camera sits off to the side (0 = straight behind)
+const CHASE_DIST = 9;   // how far back from the runner the chase camera sits
 
 function updateCamera(v, dt) {
   const z = wz(v.x), y = v.y;
   const want = new THREE.Vector3();
   const look = new THREE.Vector3(0, y + 1.2, z - 9);
-  if (G.cam === 'chase') want.set(0, y * 0.6 + 3.4, z + 8.5);
+  if (G.cam === 'chase') {
+    // 3/4 view: swing the camera CHASE_ANGLE degrees off the track to the right, keeping the same distance
+    const a = CHASE_ANGLE * Math.PI / 180;
+    want.set(Math.sin(a) * CHASE_DIST, y * 0.6 + 4, z + Math.cos(a) * CHASE_DIST);
+    look.set(0, y + 1, z - 4);
+  }
   else { want.set(5.5, y * 0.7 + 5.2, z + 7.5); look.set(-0.5, y + 0.8, z - 6); }
   const k = G.camPos.lengthSq() === 0 ? 1 : 1 - Math.exp(-dt * 6); // glide between camera styles; the music clock is not affected
   G.camPos.lerp(want, k);
