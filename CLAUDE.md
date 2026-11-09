@@ -98,3 +98,9 @@ Locking uses a rubberband time-stretch with pitch kept (at most about ±3%). In 
 - **Not tested:** human play-testing (difficulty and fun are unverified), real phones/iOS (especially hold on touch), whether the time-corrected songs sound right, and real frame rates (the headless test browser runs at about 11 fps).
 - Known gaps: the practice-run questions are placeholders; the shield doesn't cover pit falls; the Supabase leaderboard was skipped; Level 3 may fit only 3 of its 4 forks; speed portals were not done (they would break rule 1).
 - Waiting on Noe's feedback: whether Level 1 is now too hard, and which sections feel unfair. Each section's gap size (`clearOf`), length (`flyer.gen` beats, gravity `nLegs`) and the cube difficulty (`diff`, `pressEvery`, `margin`, `chainMax`, `weightsFor`) can be tuned separately in `levelgen.js`. Bake after any change.
+
+## 3D version (in progress, see `3D-PLAN.md`)
+- **Milestone 1 is done:** `3d.html` + `src/three/main3d.js` draw the existing game in 3D with Three.js (rail track, chase camera, and a side "drone" camera on key `C`). It reuses `sim.js`, the levels, the song clock and the input unchanged; the 2D game is untouched.
+- Open it with `npm run dev` and go to `/3d.html` (or `npm run build`, which now also builds the 3D page). The single-file `FaithDash.html` build is still the 2D game only.
+- Test: `node tests/three.mjs` (builds each level in 3D, screenshots to `tests/shots/3d_*.png`). Not human-tested: feel, music sync by ear, phones.
+- Known gaps: no sideways lane yet (the runner stays in the middle), tunnel and ceiling sections hide the view from the chase camera, art is plain shapes, no trivia gates or HUD in the 3D page, no camera script yet (Milestone 2).
