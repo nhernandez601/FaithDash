@@ -1,4 +1,4 @@
-// 3D test page (Milestone 1): loads /3d.html, builds each level in 3D, moves the runner with the prover's own inputs to a
+// 3D test page: loads /3d.html, builds each level in 3D, moves the runner with the prover's own inputs to a
 // few interesting spots and takes screenshots. Checks the page makes no errors and that something was actually drawn.
 // Usage: node tests/three.mjs   (writes tests/shots/3d_*.png)
 import { chromium } from 'playwright-core';
@@ -14,16 +14,18 @@ const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console',
 await p.goto(`http://localhost:${port}/3d.html`); await p.waitForTimeout(1500);
 let fail = 0;
 const check = (ok, msg) => { console.log((ok ? 'PASS ' : 'FAIL ') + msg); if (!ok) fail++; };
-for (const [lvl, kind, beatsIn, cam, name] of [[1, null, 0, 'chase', 'l1_start'], [1, 'ship', 6, 'chase', 'l1_ship'], [1, 'ship', 6, 'drone', 'l1_ship_drone'], [2, 'wave', 6, 'chase', 'l2_wave'], [3, 'grav', 5, 'chase', 'l3_grav']]) {
+for (const [lvl, kind, beatsIn, cam, name] of [[1, null, 0, 'script', 'l1_start'], [1, 'ship', 6, 'script', 'l1_ship'], [1, 'ship', 6, 'easy', 'l1_ship_easy'], [2, 'wave', 6, 'script', 'l2_wave'], [3, 'grav', 5, 'script', 'l3_grav'], [2, 'droneR', 3, 'script', 'l2_drone'], [3, 'pan', 3, 'script', 'l3_pan'], [3, 'high', 4, 'script', 'l3_high']]) {
   const info = await p.evaluate(async ({ lvl, kind, beatsIn, cam }) => {
     const { G, start } = __fd3;
     await start(lvl);
-    G.playing = false; G.cam = cam; G.camPos.set(0, 0, 0);
+    G.playing = false; G.camMode = cam;
     const { proveCompletable } = await import('/src/game/bot.js');
     const { step, DT } = await import('/src/game/sim.js');
     const lv = G.level, pl = G.p;
     let targetX = 0;
-    if (kind) { const z = lv.sections.find((q) => q.kind === kind); targetX = z.x0 + beatsIn * lv.tpb; }
+    const cue = G.scripts.script.find((c) => c.look === kind);
+    if (cue) targetX = cue.t * lv.speed + beatsIn * lv.tpb; // a camera move from the script, a few beats in
+    else if (kind) { const z = lv.sections.find((q) => q.kind === kind); targetX = z.x0 + beatsIn * lv.tpb; }
     if (targetX > 0) {
       const pr = proveCompletable(lv, { margin: 0, pressEvery: 1 });
       if (!pr.ok) return { err: 'not proven' };
