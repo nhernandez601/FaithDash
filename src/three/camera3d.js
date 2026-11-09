@@ -9,8 +9,11 @@ import { wz } from './world3d.js';
 
 // A "look" is a set of numbers. The camera sits `back` tiles behind the runner, `up` tiles above (following the runner's
 // height by `follow`), `side` tiles to one side, and looks at a point `ahead` tiles in front of the runner.
+export const CHASE_ANGLE = 45; // degrees the chase camera sits off to the side (0 = straight behind)
+export const CHASE_DIST = 9;   // how far from the runner the chase camera sits
 export const LOOKS = {
-  chase:  { side: 0,    up: 3.4, back: 8.5,  follow: 0.6, lookUp: 1.2, ahead: 9,  lookSide: 0,    fov: 62, sway: 0 },
+  // chase: Noe's three-quarter view, CHASE_ANGLE degrees off to the right of the track, CHASE_DIST tiles from the runner
+  chase:  { side: Math.sin(CHASE_ANGLE * Math.PI / 180) * CHASE_DIST, up: 4, back: Math.cos(CHASE_ANGLE * Math.PI / 180) * CHASE_DIST, follow: 0.6, lookUp: 1.0, ahead: 4, lookSide: 0, fov: 62, sway: 0 },
   wide:   { side: 0,    up: 4.2, back: 11.5, follow: 0.7, lookUp: 1.0, ahead: 11, lookSide: 0,    fov: 72, sway: 0 },
   droneR: { side: 5.5,  up: 5.2, back: 7.5,  follow: 0.7, lookUp: 0.8, ahead: 6,  lookSide: -0.5, fov: 62, sway: 0 },
   droneL: { side: -5.5, up: 5.2, back: 7.5,  follow: 0.7, lookUp: 0.8, ahead: 6,  lookSide: 0.5,  fov: 62, sway: 0 },
