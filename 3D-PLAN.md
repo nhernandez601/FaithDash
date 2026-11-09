@@ -1,8 +1,6 @@
 # Faith Dash 3D: design plan
 
-Status: design only. No 3D code exists yet. The 2D game lives in the project owner's local folder
-(`faith-dash`, with its own `CLAUDE.md` and `tools/beatmap/`). Push that into this repo first, then
-follow this plan.
+Status: Milestones 1 and 2 are built (see `CLAUDE.md`, section "3D version"). Neither has been play-tested by a person yet.
 
 ## Decisions made
 
