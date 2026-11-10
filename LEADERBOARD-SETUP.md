@@ -19,6 +19,7 @@ scores on their own phone or computer. To let everyone compare scores, the game 
    https://github.com/nhernandez601/FaithDash/blob/main/supabase/leaderboard.sql
    Click the **Copy raw file** button (two overlapping squares, top right of the file).
 3. Paste it into the SQL Editor and click **Run**. It should say **Success. No rows returned**.
+4. Do the same with **supabase/badwords.sql** (the gamer-name filter).
 
 ## 3. Get the two connection values
 1. In the left menu, click **Project Settings** (the gear), then **Data API** (it may be called **API**).
@@ -36,5 +37,8 @@ functions, and those check every name and score. Claude puts them into `src/onli
 - **Cheating:** the server only accepts a score for a run it saw start, and only if the score was possible in the time
   that passed. A determined cheater could still fake a believable score. To remove one, open the **SQL Editor** and run:
   `update fd_scores set hidden = true where id = 123;` (find the id under **Table Editor** -> `fd_scores`).
-- **Bad names:** names are filtered, but to ban a player run
+- **Bad names:** names are filtered in the game AND in the database (numbers for letters, spaced-out letters, repeated
+  letters and look-alikes are decoded first). To block one more word straight away:
+  `insert into fd_bad_words values ('word', 'part');` (anywhere in a name) or `'word'` instead of `'part'` (whole word only).
+  Tell Claude too, so the game's own list (src/online/names.js) matches. To ban a player run
   `update fd_players set banned = true where name = 'TheName';`
