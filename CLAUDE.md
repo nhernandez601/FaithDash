@@ -6,7 +6,16 @@ Last updated: 2026-11-09. Version: **v6.2** (`GEN_VERSION = 13`).
 - Noe asked to drop the 2D game entirely. **The 3D game is now `index.html`** (it was `3d.html`; `public/3d.html` just forwards old links to `./`). Live site: https://nhernandez601.github.io/FaithDash/ (the GitHub Actions workflow `.github/workflows/deploy-pages.yml` publishes on every push to main; Pages source = GitHub Actions).
 - Deleted (still in git history): Phaser and the 2D app (`src/app.js`, `main.js`, `config.js`, `styles.css`, `src/ui/`, `src/render/`), the single-file build `FaithDash.html` + vite-plugin-singlefile, the Supabase leaderboard (`supabase/`, `core/leaderboard.js`, `scripts/gen-sql.mjs`), `core/storage.js`, `core/fsm.js`, 2D-only art (menu, skin_*.webp, tex2) and the 2D browser tests.
 - Kept because the 3D game or its tests use them: `src/game/*` (sim, levels, prover, run), `src/audio/*`, `core/bank.js` + `data/questions.js` (trivia bank, for later), `scripts/bake-levels.mjs`. `npm test` = levels + sim + lanes tests.
-- To play locally: `start.bat` (dev server opens the 3D game). Sections below that describe the 2D game, `FaithDash.html` or `/3d.html` are history.
+- To play locally: `start.bat` (dev server opens the 3D game).
+
+## One endless level, stages, trivia (2026-11-09) — READ FIRST
+- **One run on the chosen song; the song repeats and each time round is a harder stage**: Stage 1 Easy "The Beginning", 2 Medium "The Journey", 3 Hard "The Trial", then Hard again (round 2, 3...) until out of lives. There is no "level complete": the finish line = `stageClear()` (bonus, banner, song restarts, next layout). Lives, score, multiplier carry over. Score = `distBank` (distance of cleared stages) + distance + bonus.
+- `levelgen.js`: `TIER_CFG` (easy/medium/hard settings), `STAGE_LIST` [id, song, tier, seed] = 9 levels (ids 1-3 are the original three), `stageId(song, stage)`, `SONG_IDS`, `TIERS`. **Only ship flying now** (wave removed: Noe found it too hard). `npm run bake` builds stale levels in parallel worker threads (`--all` rebuilds everything).
+- **Coin gates ask a question** (`src/three/trivia.js`: the 28 questions from Noe's "Trek: His Story Unit 1 Creation" quiz, answer key checked by `tests/trivia.test.mjs`). The game pauses (audio suspended), right answer = +1 life (max 3), +0.5 multiplier (streak +8), +1000 x multiplier points; wrong = nothing lost. Keys 1-4 answer. Deck deals every question once before repeats; choices are shuffled.
+- Touch controls: ◀ ▶ bottom-left, ▼ roll + ▲ jump (hold to fly) bottom-right, see-through. On touch screens a tap on the screen does NOT jump (swipes still change lane / roll); a mouse click still jumps. "Next move" sits at the bottom centre.
+- Camera: `CHASE_ANGLE` 52, `CHASE_DIST` 10.5, looks 13 ahead. Gravity mode (`G.gk` blend) glides below the runner and looks up at the ceiling.
+- Lane obstacles get a glowing floor strip on each blocked lane (red = gate, amber = hurdle), `LANE_MARK` in main3d.js.
+- iPhone Safari cannot hide its bars from a web page (no Fullscreen API on iPhone). The page has the Home Screen tags + manifest (`display: fullscreen`); a one-time tip on iPhone/iPad Safari says Share -> Add to Home Screen. Sections below that describe the 2D game, `FaithDash.html` or `/3d.html` are history.
 
 ## Who you are working with
 - **Owner: Noe Hernandez**, an IT help desk specialist. He knows networking and a few command / PowerShell lines, but **not coding**. Explain things in plain language, avoid jargon, and give him things he can double-click or copy.

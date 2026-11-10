@@ -1,6 +1,6 @@
 // Level integrity: every level must be provably completable, fair around coins/checkpoints, and ramp up in difficulty.
 import assert from 'node:assert/strict';
-import { LEVEL_DEFS, getLevel, __dbg, levelSig, GROUND_MAX_Y, PORTAL_FLIP } from '../src/game/levelgen.js';
+import { LEVEL_DEFS, getLevel, __dbg, levelSig, GROUND_MAX_Y, PORTAL_FLIP, SONG_IDS, TIERS, stageId } from '../src/game/levelgen.js';
 import BAKED from '../src/game/levels.baked.js';
 import { proveCompletable, replayInputs } from '../src/game/bot.js';
 import { step, newPlayer, DT, INV_TIME } from '../src/game/sim.js';
@@ -207,11 +207,15 @@ for (const def of LEVEL_DEFS) {
   });
 }
 
-t('Level 1/2/3 speeds increase and tiers step up', () => {
-  assert.ok(LEVEL_DEFS[0].speed < LEVEL_DEFS[1].speed && LEVEL_DEFS[1].speed < LEVEL_DEFS[2].speed);
+t('every song has an easy, a medium and a hard stage, and each stage is faster than the last', () => {
+  for (const song of SONG_IDS) {
+    const st = TIERS.map((tier) => LEVEL_DEFS.find((d) => d.song === song && d.tier === tier));
+    assert.ok(st.every(Boolean), song + ' is missing a stage');
+    assert.ok(st[0].speed < st[1].speed && st[1].speed < st[2].speed, song + ': stages must speed up');
+    assert.deepEqual([0, 1, 2, 3].map((s) => stageId(song, s)), [st[0].id, st[1].id, st[2].id, st[2].id], song + ': stage 4+ repeats the hard layout');
+  }
   // v5: every level runs on a real song locked to a steady tempo, so difficulty comes from speed, density and the tier of musical hits
   assert.ok(LEVEL_DEFS.every((d) => d.song && d.bpm === getBeatMap(d.song).bpm), 'every level needs a song, and its tempo must be the song\'s tempo');
-  assert.deepEqual(LEVEL_DEFS.map((d) => d.tier), ['easy', 'medium', 'hard']);
 });
 t('level generation is deterministic (same seed -> same layout)', () => {
   const a = JSON.stringify(getLevel(1).spikes), b = JSON.stringify(getLevel(1).spikes);

@@ -7,25 +7,42 @@ import BAKED from './levels.baked.js';
 import { getBeatMap, cueCandidates } from '../audio/music.js';
 
 // Bump when the generator's output changes. Levels are generated at build time (npm run bake) and shipped ready-made.
-export const GEN_VERSION = 13;
+export const GEN_VERSION = 14; // v14: wave flying removed from every level (ship flying only). v15 adds stages per song (no generator change)
 
 // v11: every level is built on a real song's beat map (see src/audio/music.js). `song` picks the track, `tier` picks which
 // musical hits may become take-offs (easy / medium / hard), `beats` is where the music ends. Each song was locked to a steady tempo (Arcade Drop and Arcade Boss Battle 130 BPM, Intense Section 147 BPM).
 // To use a different song for a level, change `song` (and `beats`) here and run  npm run bake.
-export const LEVEL_DEFS = [
-  {
-    id: 1, name: 'The Beginning', difficulty: 'Easy', song: 'drop', tier: 'easy', speed: 9, bpm: getBeatMap('drop').bpm, beats: getBeatMap('drop').endBeat, seed: 11,
-    coins: 5, forks: 4, zones: 6, zoneKinds: ['ship', 'grav', 'wave', 'shipwave', 'grav', 'ship'], secrets: 3, portalChance: 0, orbChance: 1, diff: 0.75, pressEvery: 4, margin: 0.08, platFrom: 0.15, spinnerFrom: 0.45, pulseFrom: 0.3, movesawFrom: 0.1, tripleFrom: 0.35, chainMax: 3,
+// v15 (3D game): ONE level that gets harder each time the song comes round. Every song has three stages, each its own
+// proven, beat-synced layout: easy ("The Beginning"), medium ("The Journey"), hard ("The Trial"). The game plays them in
+// order on the chosen song, then keeps repeating the hard one until the player runs out of lives.
+export const TIERS = ['easy', 'medium', 'hard'];
+export const SONG_IDS = ['drop', 'boss', 'intense'];
+const TIER_CFG = {
+  easy: {
+    name: 'The Beginning', difficulty: 'Easy', speed: 9,
+    rest: { coins: 5, forks: 4, zones: 6, zoneKinds: ['ship', 'grav', 'ship', 'ship', 'grav', 'ship'], secrets: 3, portalChance: 0, orbChance: 1, diff: 0.75, pressEvery: 4, margin: 0.08, platFrom: 0.15, spinnerFrom: 0.45, pulseFrom: 0.3, movesawFrom: 0.1, tripleFrom: 0.35, chainMax: 3 },
   },
-  {
-    id: 2, name: 'The Journey', difficulty: 'Medium', song: 'boss', tier: 'medium', speed: 10.5, bpm: getBeatMap('boss').bpm, beats: getBeatMap('boss').endBeat, seed: 23,
-    coins: 6, forks: 4, zones: 5, zoneKinds: ['ship', 'wave', 'grav', 'shipwave', 'waveship'], secrets: 3, portalChance: 0, orbChance: 0.8, diff: 0.95, pressEvery: 3, margin: 0.07, platFrom: 0.05, spinnerFrom: 0.15, pulseFrom: 0.1, movesawFrom: 0, tripleFrom: 0.1, chainMax: 4,
+  medium: {
+    name: 'The Journey', difficulty: 'Medium', speed: 10.5,
+    rest: { coins: 6, forks: 4, zones: 5, zoneKinds: ['ship', 'ship', 'grav', 'ship', 'ship'], secrets: 3, portalChance: 0, orbChance: 0.8, diff: 0.95, pressEvery: 3, margin: 0.07, platFrom: 0.05, spinnerFrom: 0.15, pulseFrom: 0.1, movesawFrom: 0, tripleFrom: 0.1, chainMax: 4 },
   },
-  {
-    id: 3, name: 'The Trial', difficulty: 'Hard', song: 'intense', tier: 'hard', speed: 12, bpm: getBeatMap('intense').bpm, beats: getBeatMap('intense').endBeat, seed: 37,
-    coins: 7, forks: 4, zones: 6, zoneKinds: ['wave', 'ship', 'grav', 'waveship', 'grav', 'shipwave'], secrets: 3, portalChance: 0, orbChance: 0.7, diff: 1.0, pressEvery: 2, margin: 0.05, platFrom: 0, spinnerFrom: 0, pulseFrom: 0, movesawFrom: 0, tripleFrom: 0, chainMax: 5,
+  hard: {
+    name: 'The Trial', difficulty: 'Hard', speed: 12,
+    rest: { coins: 7, forks: 4, zones: 6, zoneKinds: ['ship', 'ship', 'grav', 'ship', 'grav', 'ship'], secrets: 3, portalChance: 0, orbChance: 0.7, diff: 1.0, pressEvery: 2, margin: 0.05, platFrom: 0, spinnerFrom: 0, pulseFrom: 0, movesawFrom: 0, tripleFrom: 0, chainMax: 5 },
   },
+};
+// [id, song, tier, seed]. Ids 1-3 are the original three levels (kept so their bakes stay valid).
+const STAGE_LIST = [
+  [1, 'drop', 'easy', 11], [4, 'drop', 'medium', 51], [5, 'drop', 'hard', 61],
+  [6, 'boss', 'easy', 71], [2, 'boss', 'medium', 25], [7, 'boss', 'hard', 81],
+  [8, 'intense', 'easy', 91], [9, 'intense', 'medium', 101], [3, 'intense', 'hard', 41],
 ];
+export const LEVEL_DEFS = STAGE_LIST.map(([id, song, tier, seed]) => {
+  const t = TIER_CFG[tier], m = getBeatMap(song);
+  return { id, name: t.name, difficulty: t.difficulty, song, tier, speed: t.speed, bpm: m.bpm, beats: m.endBeat, seed, ...t.rest };
+});
+// the level id for a song's stage (0 = easy, 1 = medium, 2 = hard)
+export const stageId = (song, stage) => LEVEL_DEFS.find((d) => d.song === song && d.tier === TIERS[Math.min(2, stage)]).id;
 
 export const TILES_PER_BEAT = 4.5; // (the old 120-160 BPM levels; musical levels use  speed * 60/bpm  instead)
 const QUARTERS = [0, 0.25, 0.5, 0.75]; // a hazard's cycle starts on a beat, so its extremes land on the beat
