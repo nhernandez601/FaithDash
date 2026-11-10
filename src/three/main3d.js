@@ -7,6 +7,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { getLevel, LEVEL_DEFS } from '../game/levelgen.js';
 import { newPlayer, step, respawn, platPos, sawPos, spinnerAngle, pulseOn, DT, EV, MODE, PW, PH } from '../game/sim.js';
@@ -21,10 +22,16 @@ import logoUrl from '../assets/logo.webp';
 audio.setSongUrls(SONG_URLS);
 
 const SONGS = { drop: 'Arcade Drop', boss: 'Arcade Boss Battle', intense: 'Intense Section' };
+// ONE course: "The Pilgrim's Path", with one look. The player only picks the song; the obstacles follow that song's beat
+// (each song has its own proven layout, so it is always beatable and always on the music).
+const COURSE = "The Pilgrim's Path";
 const $ = (id) => document.getElementById(id);
 const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+const MAX_DPR = Math.min(window.devicePixelRatio || 1, 2);
+let dpr = Math.min(MAX_DPR, 1.75); // lowered automatically if the device can't keep up (see autoQuality)
+renderer.setPixelRatio(dpr);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 renderer.info.autoReset = false; // the glow pass renders several times a frame; count the whole frame
 const scene = new THREE.Scene();
@@ -34,15 +41,38 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.55;
 const hemi = new THREE.HemisphereLight(0xc9b8ff, 0x2a2050, 1.1); scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xfff0d8, 2.0); sun.position.set(-8, 16, 6); scene.add(sun);
+const sun = new THREE.DirectionalLight(0xfff0d8, 2.0); sun.position.set(-8, 16, 6); scene.add(sun); scene.add(sun.target);
+// a soft shadow under the hero only (cheap: a small shadow box that follows the runner)
+sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); sun.shadow.radius = 4; sun.shadow.bias = -0.0005;
+Object.assign(sun.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5, near: 1, far: 40 });
 const rimLight = new THREE.DirectionalLight(0x8fd8ff, 0.9); rimLight.position.set(10, 4, -12); scene.add(rimLight);
 
 // glow (bloom): bright crystals, eyes, lasers and coins light up softly
-const composer = new EffectComposer(renderer);
+// render into a multisampled target: post effects otherwise switch anti-aliasing off and edges look jagged
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.22, 0.92);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+// colour grade to match the intro film: teal in the shadows, warm gold in the highlights, a little more contrast and
+// saturation, and a soft vignette. Runs last, on the final picture.
+const grade = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, amount: { value: 1 } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float amount; varying vec2 vUv;
+    void main(){
+      vec4 src = texture2D(tDiffuse, vUv); vec3 c = src.rgb;
+      float l = dot(c, vec3(0.299, 0.587, 0.114));
+      vec3 shadowTint = vec3(-0.02, 0.025, 0.06), highTint = vec3(0.06, 0.025, -0.045);
+      c += shadowTint * (1.0 - smoothstep(0.0, 0.5, l)) + highTint * smoothstep(0.45, 1.0, l);
+      c = mix(vec3(l), c, 1.18);                         // saturation
+      c = (c - 0.5) * 1.07 + 0.5;                        // contrast
+      vec2 d = vUv - 0.5; float vig = smoothstep(0.85, 0.25, length(d * vec2(1.0, 0.85)));
+      c *= mix(0.72, 1.0, vig);                          // vignette
+      gl_FragColor = vec4(mix(src.rgb, clamp(c, 0.0, 1.0), amount), src.a);
+    }`,
+});
+composer.addPass(grade);
 
 const sparks = new A.Sparks(scene);
 const flames = new A.Sparks(scene, 1400, { size: 0.34, grav: -5 });
@@ -72,7 +102,7 @@ function disposeRoot() {
 
 function buildWorld(lv) {
   disposeRoot();
-  const th = A.THEMES[(lv.id - 1) % A.THEMES.length];
+  const th = A.THEMES[0]; // one background for the whole game
   scene.background = new THREE.Color(th.fog);
   scene.fog = new THREE.Fog(th.fog, th.fogNear, th.fogFar);
   const root = new THREE.Group(); G.root = root; scene.add(root);
@@ -160,7 +190,7 @@ function updatePlayer(v, p, dt) {
       const side = Math.random() < 0.5 ? (Math.random() < 0.5 ? -1 : 1) : 0;
       const fx = side ? side * (0.42 + Math.random() * 0.08) : (Math.random() - 0.5) * 0.6;
       const fyy = side ? fy - 0.2 + Math.random() * 0.6 : fy + 0.42 + Math.random() * 0.15;
-      flames.emit(lx + fx, fyy, fz - 0.2 + (Math.random() - 0.5) * 0.6, 1, [0xff4a00, 0xff8a10, 0xffb52a, 0xffe08a], 0.5, 0.9, 0.2);
+      flames.emit(lx + fx, fyy, fz - 0.2 + (Math.random() - 0.5) * 0.6, 1, G.flameCols || [0xff4a00, 0xff8a10, 0xffb52a, 0xffe08a], 0.5, 0.9, 0.2);
     }
   }
 }
@@ -184,18 +214,28 @@ function updateDynamic(t, wall) {
 }
 
 // 3/4 view: the chase camera sits CHASE_ANGLE degrees off to the right of the track, CHASE_DIST back
-const CHASE_ANGLE = 68;
-const CHASE_DIST = 5.6;
+const CHASE_ANGLE = 74;
+const CHASE_DIST = 8.6;
 function updateCamera(v, dt) {
   const z = wz(v.x), y = v.y;
+  // the camera follows height slowly, so jumps don't bob the whole screen
+  G.camY = G.camY === undefined || G.camPos.lengthSq() === 0 ? y * 0.6 : G.camY + (y * 0.6 - G.camY) * (1 - Math.exp(-dt * 2.5));
   const want = new THREE.Vector3(), look = new THREE.Vector3();
-  if (G.attract) {
+  if (G.showcase) {
+    // customise screen: slow orbit close around the hero
+    // the hero stands at the start of the road; frame it on the right half of the screen (the picker is on the left)
+    const hp = G.player ? G.player.position : new THREE.Vector3(0, 0.4, -0.4), a = 0.9 + G.attractT * 0.35;
+    want.set(hp.x + Math.sin(a) * 3.2, hp.y + 0.9, hp.z + Math.cos(a) * 3.2);
+    const f = new THREE.Vector3().subVectors(hp, want).normalize(), right = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0, 1, 0)).normalize();
+    look.copy(hp).addScaledVector(right, camera.aspect > 1 ? -1.1 : 0).y += camera.aspect > 1 ? 0 : -1.1;
+  } else if (G.attract) {
     const a = Math.sin(G.attractT * 0.15) * 0.5 + 0.55;
     want.set(Math.sin(a) * 11, 5 + Math.sin(G.attractT * 0.2), z + Math.cos(a) * 11); look.set(-1.5, 1.5, z - 14);
   } else if (G.cam === 'chase') {
     const a = CHASE_ANGLE * Math.PI / 180;
     const lx = G.L ? G.L.lx * LANE_W * 0.7 : 0;
-    want.set(lx + Math.sin(a) * CHASE_DIST, y * 0.6 + 2.3, z + Math.cos(a) * CHASE_DIST); look.set(lx * 0.8 - 0.6, y * 0.8 + 0.8, z - 3.2);
+    // far, a little high and well to the side, so a long stretch of road runs across the screen
+    want.set(lx + Math.sin(a) * CHASE_DIST, G.camY + 3.6, z + Math.cos(a) * CHASE_DIST); look.set(lx * 0.6 - 0.8, G.camY + 0.7, z - 5.5);
   } else if (G.cam === 'close') { want.set(1.7, y + 1.2, z + 1.9); look.set(0, y + 0.45, z - 0.4); } // close-up of the hero (debug / showcase)
   else { want.set(5.5, y * 0.7 + 5.2, z + 7.5); look.set(-0.5, y + 0.8, z - 6); }
   const k = G.camPos.lengthSq() === 0 ? 1 : 1 - Math.exp(-dt * 6); // glide between camera styles; the music clock is not affected
@@ -274,10 +314,22 @@ function hud(p, ct) {
   $('h-beat').style.opacity = String(Math.max(0.15, 1 - ph * 2.2));
 }
 
+// ---------- smoothness: keep the frame rate up by lowering the render resolution if needed ----------
+let fAvg = 16.7, fCheck = 0;
+function autoQuality(ms, wall) {
+  if (document.hidden) return;
+  fAvg += (Math.min(ms, 100) - fAvg) * 0.05;
+  if (wall < fCheck) return;
+  fCheck = wall + 2000;
+  if (fAvg > 22 && dpr > 0.75) { dpr = Math.max(0.75, dpr - 0.25); resize(); }         // struggling: render fewer pixels
+  else if (fAvg < 13 && dpr < Math.min(MAX_DPR, 1.75)) { dpr = Math.min(MAX_DPR, 1.75, dpr + 0.25); resize(); } // headroom: sharpen back up
+}
+
 // ---------- main loop ----------
 function frame(wall) {
   requestAnimationFrame(frame);
   renderer.info.reset();
+  autoQuality(wall - G.wall, wall);
   const dt = Math.min(0.1, (wall - G.wall) / 1000 || 0.016); G.wall = wall;
   const lv = G.level; if (!lv) { composer.render(); return; }
   const p = G.p;
@@ -328,6 +380,7 @@ function frame(wall) {
     if (shake > 0) { shake = Math.max(0, shake - dt); camera.position.x += (Math.random() - 0.5) * shake; camera.position.y += (Math.random() - 0.5) * shake; }
     hud(p, ct);
   }
+  if (G.player) { const pp = G.player.position; sun.position.set(pp.x - 6, pp.y + 14, pp.z + 5); sun.target.position.copy(pp); }
   sparks.update(dt); flames.update(dt);
   aurora.position.copy(camera.position); aurora.userData.tick(wall / 1000);
   composer.render();
@@ -379,7 +432,7 @@ async function start(id) {
   G.L = LN.newLaneState(); G.laneReq = 0; G.rollReq = false; if (G.hz) G.hz.from = 0;
   G.lives = LIVES; G.score = 0; G.bonus = 0; G.streak = 0; G.best = 0; G.coins = 0; G.wasGrounded = true; G.attract = false;
   G.cueT = (lv.cues || []).map((c) => c.t).sort((a, b) => a - b);
-  $('h-title').textContent = `${lv.name} / ${SONGS[lv.song] || ''}`.toUpperCase();
+  $('h-title').textContent = `${COURSE} / ${SONGS[lv.song] || ''}`.toUpperCase();
   show('hud');
   $('msg').textContent = 'Loading song...'; $('msg').classList.remove('hidden');
   audio.unlock();
@@ -410,8 +463,8 @@ function previewLevel(id) {
   G.level = lv; G.p = newPlayer(lv); G.prev = null; G.L = LN.newLaneState();
   const d = LEVEL_DEFS.find((q) => q.id === id);
   $('play').innerHTML = `PLAY ${SONGS[d.song].toUpperCase()} <span>↗</span>`;
-  $('m-level').textContent = d.name.toUpperCase();
-  $('m-sub').textContent = `${d.difficulty} · ${Math.round(d.bpm)} BPM · ${d.speed} tiles/s`.toUpperCase();
+  $('m-level').textContent = COURSE.toUpperCase();
+  $('m-sub').textContent = `${SONGS[d.song]} · ${Math.round(d.bpm)} BPM`.toUpperCase();
   for (const b of document.querySelectorAll('.song')) b.classList.toggle('on', +b.dataset.id === id);
 }
 
@@ -456,15 +509,16 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && G.p
 
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
-  renderer.setSize(w, h, false); composer.setSize(w, h); bloom.setSize(w, h);
-  camera.aspect = w / h; camera.fov = w < h ? 72 : 60; camera.updateProjectionMatrix();
+  renderer.setPixelRatio(dpr); composer.setPixelRatio(dpr);
+  renderer.setSize(w, h, false); composer.setSize(w, h); bloom.setSize(w * 0.5, h * 0.5); // glow at half size: soft and cheap
+  camera.aspect = w / h; camera.fov = w < h ? 70 : 52; camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize); resize();
 
 // menu wiring
 for (const d of LEVEL_DEFS) {
   const b = document.createElement('button'); b.className = 'song'; b.dataset.id = d.id;
-  b.innerHTML = `<i>${SONGS[d.song]}</i><small>${d.difficulty} · ${Math.round(d.bpm)} BPM</small>`;
+  b.innerHTML = `<i>${SONGS[d.song]}</i><small>${Math.round(d.bpm)} BPM · ${d.difficulty}</small>`;
   b.onclick = () => previewLevel(d.id);
   $('songs').appendChild(b);
 }
@@ -475,7 +529,25 @@ $('restart').onclick = () => { audio.wake(); audio.stopMusic && audio.stopMusic(
 $('quit').onclick = toMenu;
 $('again').onclick = () => start(G.level.id);
 $('menubtn').onclick = toMenu;
-$('camtoggle').onclick = () => { G.cam = G.cam === 'chase' ? 'drone' : 'chase'; $('camtoggle').textContent = G.cam === 'chase' ? 'Camera: chase' : 'Camera: drone'; };
+// ---------- cube customisation (saved on this device) ----------
+let skinId = 'flame';
+try { skinId = localStorage.getItem('faithdash3d.skin') || 'flame'; } catch { /* storage blocked: use the default */ }
+function useSkin(id) {
+  const s = A.SKINS.find((q) => q.id === id) || A.SKINS[0];
+  skinId = s.id; A.setHeroSkin(s); G.flameCols = s.flames;
+  try { localStorage.setItem('faithdash3d.skin', s.id); } catch { /* fine */ }
+  for (const b of document.querySelectorAll('.skin')) b.classList.toggle('on', b.dataset.id === s.id);
+  $('skinname').textContent = s.name; $('skindesc').textContent = s.desc;
+}
+for (const s of A.SKINS) {
+  const b = document.createElement('button'); b.className = 'skin'; b.dataset.id = s.id; b.title = s.name;
+  b.style.setProperty('--a', s.swatch[0]); b.style.setProperty('--b', s.swatch[1]);
+  b.onclick = () => useSkin(s.id);
+  $('skins').appendChild(b);
+}
+$('customize').onclick = () => { G.showcase = true; G.attractT = 0; $('menu').classList.add('hidden'); $('custom').classList.remove('hidden'); };
+$('customdone').onclick = () => { G.showcase = false; $('custom').classList.add('hidden'); $('menu').classList.remove('hidden'); };
+useSkin(skinId);
 
 // ---------- intro video: plays first, then fades into the live menu ----------
 const vid = $('introvid');

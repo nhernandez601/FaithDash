@@ -143,14 +143,14 @@ def uv_project(o):
             elif abs(nrm.x) > abs(nrm.y): uv[li].uv = (co.y, co.z)
             else: uv[li].uv = (co.x, co.z)
 
-def join(coll, name):
+def join(coll, name, angle=32):
     bpy.ops.object.select_all(action='DESELECT')
     obs = [o for o in coll.objects if o.type == 'MESH']
     for o in obs: o.select_set(True)
     bpy.context.view_layer.objects.active = obs[0]
     bpy.ops.object.join()
     o = active(); o.name = name
-    bpy.ops.object.shade_auto_smooth(angle=math.radians(32))
+    bpy.ops.object.shade_auto_smooth(angle=math.radians(angle))  # higher angle = rounder, softer shading
     apply_all(o)
     return o
 
@@ -337,7 +337,7 @@ def build_island(kind):
             cyl(c, 0.12, 0.06, (math.cos(a) * 0.55, math.sin(a) * 0.55, h), M['gold'], 12)
         tree_pine(c, 0.0, 0.1, 0, 0.9)
         cube(c, (0.25, 0.02, 1.6), (0.3, -0.93, -0.8), M['water'])
-    return join(c, 'Island%d' % kind)
+    return join(c, 'Island%d' % kind, 80)
 
 # ================================================================ 11. road segment (render sheet only; the game draws the road itself)
 def build_road():

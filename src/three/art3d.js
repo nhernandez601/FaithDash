@@ -518,16 +518,48 @@ function heroMat(face) {
   return new THREE.MeshStandardMaterial({ map: heroTex(face, false), emissiveMap: heroTex(face, true), emissive: 0xffffff, emissiveIntensity: 2.2, metalness: 0.75, roughness: 0.28 });
 }
 
+// ---------------------------------------------------------------- cube skins (customise screen)
+// Each skin repaints the Blender hero's materials (by their Blender names) and sets the flame colours.
+export const SKINS = [
+  { id: 'flame', name: 'Golden Flame', desc: 'The hero of the intro: burning gold.', body: '#ffc23a', dark: '#8a4a10', glow: '#ff7a10', eyes: '#ffd27a', flame: '#ff9a2a', gem: '#fff1c0', metal: 1, swatch: ['#ffd36a', '#ff7a10'], flames: [0xff4a00, 0xff8a10, 0xffb52a, 0xffe08a] },
+  { id: 'crimson', name: 'Crimson Fury', desc: 'Red-hot armour and a blazing core.', body: '#d4262e', dark: '#4a0608', glow: '#ff3a1a', eyes: '#ffb08a', flame: '#ff3a1a', gem: '#ffd0c0', metal: 0.9, swatch: ['#ff5a5a', '#8a0a10'], flames: [0xff1a00, 0xff4a1a, 0xff8a3a, 0xffd0a0] },
+  { id: 'angelic', name: 'Angelic', desc: 'Pearl white with a holy golden light.', body: '#f4efe4', dark: '#c9a24a', glow: '#ffe9a0', eyes: '#ffffff', flame: '#fff1b0', gem: '#ffffff', metal: 0.45, swatch: ['#ffffff', '#ffd98a'], flames: [0xfff1b0, 0xffe08a, 0xffffff, 0xffd36a] },
+  { id: 'guardian', name: 'Guardian', desc: 'Steel blue with a cool cyan spirit.', body: '#3a6cff', dark: '#0a1a4a', glow: '#3ad6ff', eyes: '#c0f6ff', flame: '#3ad6ff', gem: '#e0fbff', metal: 0.95, swatch: ['#7fb0ff', '#1a3aaa'], flames: [0x1a8aff, 0x3ad6ff, 0x9ff3ff, 0xffffff] },
+  { id: 'prism', name: 'Divine Prism', desc: 'Violet crystal with rainbow fire.', body: '#b06bff', dark: '#3a1a6a', glow: '#ff5ae0', eyes: '#9ff3ff', flame: '#ff5ae0', gem: '#ffffff', metal: 0.8, swatch: ['#ff8ae8', '#7f5aff'], flames: [0xff5ae0, 0x9ff3ff, 0xffe08a, 0xb06bff] },
+  { id: 'midnight', name: 'Midnight', desc: 'Black steel with violet embers.', body: '#22222e', dark: '#05050a', glow: '#8a4dff', eyes: '#d0b0ff', flame: '#8a4dff', gem: '#e0d0ff', metal: 0.85, swatch: ['#3a3a4a', '#8a4dff'], flames: [0x5a2dff, 0x8a4dff, 0xc09aff, 0xffffff] },
+];
+let heroModel = null, heroSkin = SKINS[0];
+const heroLights = [];
+function paintHero(m, s) {
+  m.traverse((o) => {
+    if (!o.isMesh || !o.material) return;
+    const mt = o.material, n = mt.name;
+    if (n === 'Gold') { mt.color.set(s.body); mt.metalness = s.metal; }
+    else if (n === 'GoldDark') mt.color.set(s.dark);
+    else if (n === 'CoreGlow') { mt.color.set(s.glow); mt.emissive.set(s.glow); }
+    else if (n === 'EyeHot') { mt.color.set(s.eyes); mt.emissive.set(s.eyes); }
+    else if (n === 'Flame') { mt.color.set(s.flame); mt.emissive.set(s.flame); }
+    else if (n === 'Gem') { mt.color.set(s.gem); mt.emissive.set(s.gem); }
+  });
+}
+export function setHeroSkin(s) {
+  heroSkin = s;
+  if (heroModel) paintHero(heroModel, s);   // clones share these materials, so every copy updates
+  for (const l of heroLights) l.color.set(s.glow);
+}
+
 let heroPromise = null;
 function loadHero() {
   if (!heroPromise) heroPromise = new GLTFLoader().loadAsync(heroGlbUrl).then((gltf) => {
-    const m = gltf.scene;
+    const m = gltf.scene; heroModel = m;
     m.traverse((o) => {
       if (!o.isMesh || !o.material) return;
       const mt = o.material;
       mt.emissiveIntensity *= 0.2;            // Blender's emission strengths are much brighter in a live game with glow
       if (mt.metalness > 0.9) mt.envMapIntensity = 0.4;
+      o.castShadow = true;
     });
+    paintHero(m, heroSkin);
     return m;
   });
   return heroPromise;
@@ -560,7 +592,7 @@ export function makeHero(PW, PH) {
   const wave = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.95, 3), new THREE.MeshStandardMaterial({ color: 0xffd36a, emissive: 0xff8a00, emissiveIntensity: 1.6, flatShading: true }));
   wave.name = 'wave'; wave.rotation.x = -Math.PI / 2;
   spin.add(cube, ship, wave);
-  const light = new THREE.PointLight(0xff9a2a, 9, 6, 1.4); light.position.y = 0.3; g.add(light);
+  const light = new THREE.PointLight(heroSkin.glow, 9, 6, 1.4); light.position.y = 0.3; g.add(light); heroLights.push(light);
   return g;
 }
 
@@ -649,7 +681,7 @@ export function buildLandmarks(lv, root, M) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(R, 0.45, 10, 40, Math.PI), stone); g.add(ring);
     for (const sx of [-1, 1]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.4, 0.9), stone); leg.position.set(sx * R, -0.5, 0); g.add(leg); }
     const neon = new THREE.Mesh(new THREE.TorusGeometry(R - 0.48, 0.04, 6, 40, Math.PI), M.neon); g.add(neon);
-    const gear = makeGearWheel(1.3, M); gear.position.set(R + 0.9, 1.6, 0.2); g.add(gear);
+    const gear = makeGearWheel(1.3, M); gear.position.set(-R - 1.0, 0.9, 0.2); g.add(gear); // both gears on the far side, away from the camera
     const gear2 = makeGearWheel(0.8, M); gear2.position.set(-R - 0.6, 2.4, 0.2); g.add(gear2);
     root.add(g); out.push(gear, gear2);
   }
@@ -714,7 +746,7 @@ export function bakeStatic(top) {
     for (let i = 0; i < list.length; i += 4000) { // keep each merged mesh a sensible size
       const merged = mergeGeometries(list.slice(i, i + 4000), false);
       if (!merged) continue;
-      const mesh = new THREE.Mesh(merged, mat); mesh.frustumCulled = false; top.add(mesh);
+      const mesh = new THREE.Mesh(merged, mat); mesh.frustumCulled = false; mesh.receiveShadow = true; top.add(mesh);
     }
     list.forEach((q) => q.dispose());
   }
