@@ -2,6 +2,18 @@
 
 Last updated: 2026-11-09. Version: **v6.2** (`GEN_VERSION = 13`).
 
+## 2D game removed (2026-11-09) — READ FIRST
+- Noe asked to drop the 2D game entirely. **The 3D game is now ** (was ;  just forwards old links to ). Live site: https://nhernandez601.github.io/FaithDash/ (GitHub Actions workflow  publishes on every push to main; Pages source = GitHub Actions).
+- Deleted (still in git history): Phaser and the 2D app (, , , , , ), the single-file build  + vite-plugin-singlefile, the Supabase leaderboard (, , ), , , 2D-only art (menu, skin_*.webp, tex2) and the 2D browser tests.
+- Kept because the 3D game or its tests use them:  (sim, levels, prover, run), ,  +  (trivia bank, for later), . Unknown command: "test"
+
+
+Did you mean this?
+  npm test # Test a package
+To see a list of supported npm commands, run:
+  npm help = levels + sim + lanes tests.
+- Sections below that describe the 2D game,  or  are history.
+
 ## Who you are working with
 - **Owner: Noe Hernandez**, an IT help desk specialist. He knows networking and a few command / PowerShell lines, but **not coding**. Explain things in plain language, avoid jargon, and give him things he can double-click or copy.
 - After every change, give a short, honest test report: **Passed / Failed / Not tested / Blocked**. Never claim something was play-tested by a human or listened to unless it was.

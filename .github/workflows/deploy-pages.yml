@@ -1,6 +1,5 @@
 # Publishes the game to GitHub Pages every time `main` changes (or when started by hand from the Actions tab).
-# The site: https://nhernandez601.github.io/FaithDash/        (2D game)
-#           https://nhernandez601.github.io/FaithDash/3d.html (3D game)
+# The site: https://nhernandez601.github.io/FaithDash/  (the 3D game)
 # One-time setup on GitHub: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
 name: Deploy to GitHub Pages
 
@@ -30,7 +29,7 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
-      - name: Build the site (2D game + 3D game)
+      - name: Build the game
         run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
