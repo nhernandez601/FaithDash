@@ -27,6 +27,14 @@ insert into public.fd_bad_words (word, kind) values
   ${rows('code', CODES)}
 on conflict do nothing;
 
+-- turns a stored word into a safe pattern: lower case, digits read like the name (1488 -> iaee), anything that is not a letter dropped,
+-- then each letter may repeat. So a word typed by hand in the dashboard ("Trump", "big+yahu", "911") can never break the check.
+create or replace function public.fd_word_pat(w text) returns text
+language sql immutable set search_path = public as $$
+  select regexp_replace(regexp_replace(translate(lower(coalesce(w, '')), '0123456789', 'oizeasgtbg'), '[^a-z]', '', 'g'), '(.)', '\\1+', 'g')
+$$;
+revoke all on function public.fd_word_pat(text) from public, anon, authenticated;
+
 -- true when a name contains something blocked (same readings as readings() in names.js)
 create or replace function public.fd_name_blocked(p_name text) returns boolean
 language plpgsql stable security definer set search_path = public as $$
@@ -45,12 +53,12 @@ begin
   foreach r in array rs loop
     i := i + 1;
     compact := regexp_replace(r, '[^a-z]', '', 'g');
-    if exists (select 1 from fd_bad_words b where b.kind = 'part' and compact ~ regexp_replace(b.word, '(.)', '\\1+', 'g')) then return true; end if;
-    if exists (select 1 from fd_bad_words b where b.kind = 'joke' and compact ~ b.word) then return true; end if;
+    if exists (select 1 from fd_bad_words b where b.kind = 'part' and case when fd_word_pat(b.word) <> '' then compact ~ fd_word_pat(b.word) else false end) then return true; end if;
+    if exists (select 1 from fd_bad_words b where b.kind = 'joke' and case when b.word ~ '^(([a-z]|\\[[a-z]+\\])\\+)+$' then compact ~ b.word else false end) then return true; end if;
     for w in select x from regexp_split_to_table(r, '[^a-z]+') x where x <> '' union all select compact loop
-      if exists (select 1 from fd_bad_words b where b.kind = 'word' and w ~ ('^' || regexp_replace(b.word, '(.)', '\\1+', 'g') || '$')) then return true; end if;
+      if exists (select 1 from fd_bad_words b where b.kind = 'word' and case when fd_word_pat(b.word) <> '' then w ~ ('^' || fd_word_pat(b.word) || '$') else false end) then return true; end if;
       sw := regexp_replace(w, '(.)\\1{2,}', '\\1\\1', 'g');
-      if i <= 2 and sw like '%ass' and not exists (select 1 from fd_bad_words b where b.kind = 'ass_ok' and sw like '%' || b.word) then return true; end if;
+      if i <= 2 and sw like '%ass' and not exists (select 1 from fd_bad_words b where b.kind = 'ass_ok' and sw like '%' || lower(b.word)) then return true; end if;
     end loop;
   end loop;
   return false;
