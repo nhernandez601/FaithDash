@@ -271,15 +271,14 @@ function updateCamera(v, dt) {
   G.camY = G.camY === undefined || G.camPos.lengthSq() === 0 ? y * 0.6 : G.camY + (y * 0.6 - G.camY) * (1 - Math.exp(-dt * 2.5));
   const want = new THREE.Vector3(), look = new THREE.Vector3();
   if (G.showcase) {
-    // customise screen: slow orbit close around the hero
-    // the hero stands at the start of the road; frame it on the right half of the screen (the picker is on the left)
+    // skins screen: a slow full orbit close around the hero, which stands in the middle of the screen
     const hp = G.player ? G.player.position : new THREE.Vector3(0, 0.4, -0.4), a = 0.9 + G.attractT * 0.35;
-    want.set(hp.x + Math.sin(a) * 3.2, hp.y + 0.9, hp.z + Math.cos(a) * 3.2);
-    const f = new THREE.Vector3().subVectors(hp, want).normalize(), right = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0, 1, 0)).normalize();
-    look.copy(hp).addScaledVector(right, camera.aspect > 1 ? -1.1 : 0).y += camera.aspect > 1 ? 0 : -1.1;
+    want.set(hp.x + Math.sin(a) * 3.0, hp.y + 0.75, hp.z + Math.cos(a) * 3.0); look.set(hp.x, hp.y + 0.15, hp.z);
   } else if (G.attract) {
-    const a = Math.sin(G.attractT * 0.15) * 0.5 + 0.55;
-    want.set(Math.sin(a) * 11, 5 + Math.sin(G.attractT * 0.2), z + Math.cos(a) * 11); look.set(-1.5, 1.5, z - 14);
+    // main menu: the hero centre stage, the road running away behind it, the camera swaying gently
+    const hp = G.player ? G.player.position : new THREE.Vector3(0, 0.4, -0.4), a = 0.75 + Math.sin(G.attractT * 0.2) * 0.3;
+    const r = camera.aspect < 1 ? 6.4 : 5.2;
+    want.set(hp.x + Math.sin(a) * r, 1.9, hp.z + Math.cos(a) * r); look.set(hp.x, camera.aspect > 1.4 ? 0.95 : 0.55, hp.z); // aimed at the hero (a bit above it on wide screens, so it sits below the logo)
   } else if (G.cam === 'chase') {
     const a = CHASE_ANGLE * Math.PI / 180;
     const lx = G.L ? G.L.lx * LANE_W * 0.7 : 0;
@@ -395,9 +394,11 @@ function frame(wall) {
   let ct = G.clock.t;
   if (G.attract) {
     G.attractT += dt; ct = 0;
-    const v = { x: (G.attractT * 2) % 30, y: 0, rot: 0 };
+    const v = { x: 0, y: 0, rot: 0 };
     p.x = 0;
-    updatePlayer({ x: 0, y: 0, rot: 0 }, p, dt); updateDynamic(G.attractT, wall);
+    // idle: a happy little hop every second or so (looks only)
+    const hop = Math.max(0, Math.sin(G.attractT * 3.2)); p.grounded = hop < 0.05;
+    updatePlayer({ x: 0, y: G.showcase ? 0 : hop * hop * 0.45, rot: 0 }, p, dt); updateDynamic(G.attractT, wall);
     updateCamera(v, dt);
   } else {
     if (G.playing && !G.paused) {
@@ -480,8 +481,12 @@ function gameOver() {
   G.playing = false; audio.fadeOutMusic && audio.fadeOutMusic(0.6);
   results('Out of lives', 'Get up and run again.');
 }
+// best score per song, kept on this device
+const bestOf = (song) => { try { return +localStorage.getItem('faithdash3d.best.' + song) || 0; } catch { return 0; } };
+function saveBest(song, s) { if (s <= bestOf(song)) return false; try { localStorage.setItem('faithdash3d.best.' + song, String(s)); } catch { /* fine */ } return true; }
 function results(title, sub) {
   G.playing = false; $('msg').classList.add('hidden');
+  if (saveBest(G.level.song, G.score)) sub = '★ New best score! ★';
   $('o-title').textContent = title; $('o-sub').textContent = sub;
   $('o-score').textContent = pad(G.score); $('o-best').textContent = G.best; $('o-coins').textContent = G.coins;
   $('o-prog').textContent = Math.min(100, Math.round((G.p.furthest / G.level.finishX) * 100)) + '%';
@@ -525,10 +530,11 @@ function previewLevel(id) {
   if (!G.level || G.level.id !== id) buildWorld(lv);
   G.level = lv; G.p = newPlayer(lv); G.prev = null; G.L = LN.newLaneState();
   const d = LEVEL_DEFS.find((q) => q.id === id);
-  $('play').innerHTML = `PLAY ${SONGS[d.song].toUpperCase()} <span>↗</span>`;
-  $('m-level').textContent = COURSE.toUpperCase();
-  $('m-sub').textContent = `${SONGS[d.song]} · ${Math.round(d.bpm)} BPM`.toUpperCase();
-  for (const b of document.querySelectorAll('.song')) b.classList.toggle('on', +b.dataset.id === id);
+  $('sname').textContent = SONGS[d.song];
+  $('smeta').textContent = `${Math.round(d.bpm)} BPM · ${d.difficulty}`.toUpperCase();
+  $('sbest').textContent = pad(bestOf(d.song));
+  $('mbest').textContent = pad(Math.max(...LEVEL_DEFS.map((q) => bestOf(q.song))));
+  [...$('sdots').children].forEach((el, i) => el.classList.toggle('on', LEVEL_DEFS[i].id === id));
 }
 
 // ---------- input: same everywhere, never depends on the camera ----------
@@ -582,12 +588,19 @@ function resize() {
 window.addEventListener('resize', resize); resize();
 
 // menu wiring
-for (const d of LEVEL_DEFS) {
-  const b = document.createElement('button'); b.className = 'song'; b.dataset.id = d.id;
-  b.innerHTML = `<i>${SONGS[d.song]}</i><small>${Math.round(d.bpm)} BPM · ${d.difficulty}</small>`;
-  b.onclick = () => previewLevel(d.id);
-  $('songs').appendChild(b);
-}
+// song carousel: arrows, a swipe on the card, and dots
+for (const d of LEVEL_DEFS) $('sdots').appendChild(document.createElement('i'));
+const stepSong = (k) => { const i = LEVEL_DEFS.findIndex((q) => q.id === G.sel); previewLevel(LEVEL_DEFS[(i + k + LEVEL_DEFS.length) % LEVEL_DEFS.length].id); };
+$('sprev').onclick = () => stepSong(-1);
+$('snext').onclick = () => stepSong(1);
+let cardX = null;
+$('scard').addEventListener('pointerdown', (e) => { cardX = e.clientX; });
+$('scard').addEventListener('pointerup', (e) => { if (cardX !== null && Math.abs(e.clientX - cardX) > 30) stepSong(e.clientX < cardX ? 1 : -1); cardX = null; });
+window.addEventListener('keydown', (e) => { if (!$('menu').classList.contains('hidden') && !e.repeat) { if (e.code === 'ArrowLeft') stepSong(-1); else if (e.code === 'ArrowRight') stepSong(1); else if (e.code === 'Enter') $('play').click(); } });
+// settings sheet
+$('settingsbtn').onclick = () => $('settings').classList.remove('hidden');
+$('settingsclose').onclick = () => $('settings').classList.add('hidden');
+$('introbtn').onclick = () => { $('settings').classList.add('hidden'); $('replay').click(); };
 // phones: go fullscreen and turn sideways when the run starts, where the browser allows it (Android Chrome does;
 // iPhone Safari does not, so there the game simply fills the page). Still a web page, nothing installed.
 function phoneFullscreen() {
@@ -615,11 +628,13 @@ function applyQuality(id) {
   if (sun.shadow.mapSize.x !== q.shadow) { sun.shadow.mapSize.set(q.shadow, q.shadow); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
   grade.uniforms.sharpen.value = q.sharpen; grade.uniforms.grain.value = q.grain;
   A.setSkyQuality(id === 'ultra');
-  for (const b of [$('quality'), $('quality2')]) if (b) b.textContent = '⚙ Quality: ' + q.name;
+  $('quality2').textContent = '⚙ Quality: ' + q.name;
+  for (const b of $('qseg').children) b.classList.toggle('on', b.dataset.q === id);
   resize();
 }
 const nextQ = () => applyQuality(quality === 'auto' ? 'high' : quality === 'high' && !MOBILE ? 'ultra' : 'auto'); // no Ultra on phones
-$('quality').onclick = nextQ; $('quality2').onclick = nextQ;
+$('quality2').onclick = nextQ;
+for (const b of $('qseg').children) { if (b.dataset.q === 'ultra' && MOBILE) b.remove(); else b.onclick = () => applyQuality(b.dataset.q); } // no Ultra on phones
 
 // ---------- cube customisation (saved on this device) ----------
 let skinId = 'flame';
@@ -638,7 +653,8 @@ for (const s of A.SKINS) {
   $('skins').appendChild(b);
 }
 $('customize').onclick = () => { G.showcase = true; G.attractT = 0; $('menu').classList.add('hidden'); $('custom').classList.remove('hidden'); };
-$('customdone').onclick = () => { G.showcase = false; $('custom').classList.add('hidden'); $('menu').classList.remove('hidden'); };
+const closeSkins = () => { G.showcase = false; G.camPos.set(0, 0, 0); $('custom').classList.add('hidden'); $('menu').classList.remove('hidden'); };
+$('customdone').onclick = closeSkins; $('customback').onclick = closeSkins;
 useSkin(skinId);
 applyQuality(quality);
 
@@ -655,7 +671,7 @@ vid.addEventListener('error', endIntro);
 $('skip').onclick = endIntro;
 $('sound').onclick = () => { vid.muted = !vid.muted; $('sound').textContent = vid.muted ? '🔊 Enable sound' : '🔇 Mute'; if (vid.paused) vid.play().catch(() => {}); };
 $('replay').onclick = () => { vid.muted = false; $('sound').textContent = '🔇 Mute'; playIntro(); };
-document.querySelector('.panel img').src = logoUrl;
+document.querySelector('.mlogo img').src = logoUrl;
 
 show('menu');
 // build the first world once the Blender models are in (falls back to code shapes if they fail)
