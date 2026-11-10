@@ -4,6 +4,8 @@
 //   also sent there and the leaderboard shows everyone's best score per song.
 // - The server (supabase/leaderboard.sql) checks names and scores; this file never invents records.
 import { ONLINE } from './config.js';
+import { checkName } from './names.js';
+export { checkName };
 
 const KEY = 'faithdash3d.player', LOCAL = 'faithdash3d.scores';
 const store = {
@@ -18,17 +20,7 @@ export function player() {
   if (!p || !p.id) { p = { id: uuid(), name: '' }; store.set(KEY, p); }
   return p;
 }
-// a few words that are never allowed in a name (the server has the same list)
-const BLOCK = ['fuck', 'shit', 'bitch', 'cunt', 'nigg', 'fag', 'slut', 'whore', 'dick', 'pussy', 'rape', 'nazi', 'hitler'];
-export function checkName(raw) {
-  const name = String(raw || '').replace(/\s+/g, ' ').trim();
-  if (name.length < 3) return { ok: false, error: 'At least 3 letters or numbers.' };
-  if (name.length > 16) return { ok: false, error: 'At most 16 characters.' };
-  if (!/^[A-Za-z0-9 _.\-]+$/.test(name)) return { ok: false, error: 'Letters, numbers, spaces, _ . - only.' };
-  const flat = name.toLowerCase().replace(/[^a-z]/g, '').replace(/0/g, 'o');
-  if (BLOCK.some((w) => flat.includes(w))) return { ok: false, error: 'Please pick a different name.' };
-  return { ok: true, name };
-}
+// name rules: src/online/names.js (the database checks the same rules)
 export const online = () => !!(ONLINE.url && ONLINE.anonKey);
 
 async function rpc(fn, body, ms = 9000) {
@@ -54,7 +46,7 @@ export async function setName(raw) {
   if (online()) {
     const r = await rpc('fd_set_name', { p_player: p.id, p_name: c.name });
     if (!r.ok && r.code === 'name_taken') return { ok: false, error: 'That name is taken. Try another.' };
-    if (!r.ok && r.code === 'bad_name') return { ok: false, error: 'Please pick a different name.' };
+    if (!r.ok && r.code === 'bad_name') return { ok: false, error: 'That name is not allowed. Please pick a different one.' };
     if (!r.ok && r.code !== 'offline') return { ok: false, error: 'Could not save the name online. Try again.' };
   }
   p.name = c.name; store.set(KEY, p);
