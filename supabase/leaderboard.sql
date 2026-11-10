@@ -50,7 +50,7 @@ alter table public.fd_scores  enable row level security;
 revoke all on public.fd_players, public.fd_runs, public.fd_scores from anon, authenticated;
 
 -- difficulty name for a stage number (0 = Easy, 1 = Medium, 2 = Hard, 3+ = Hard +n)
-create or replace function public.fd_reached(p_stage int) returns text language sql immutable as $$
+create or replace function public.fd_reached(p_stage int) returns text language sql immutable set search_path = public as $$
   select case when p_stage <= 0 then 'EASY' when p_stage = 1 then 'MEDIUM' when p_stage = 2 then 'HARD' else 'HARD +' || (p_stage - 2) end
 $$;
 

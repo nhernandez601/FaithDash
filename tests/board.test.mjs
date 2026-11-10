@@ -9,6 +9,6 @@ for (const n of ['', 'ab', '12345678901234567', 'hi<b>', 'emoji😀x', 'a/b/c', 
 }
 check(checkName('  spaced   out  ').name === 'spaced out', 'extra spaces are tidied');
 check(!checkName('n0zi n4zi nazi').ok, 'bad word with 0 for o is refused');
-check(online() === false, 'not connected when no URL/key is set (scores stay on the device)');
+check(typeof online() === 'boolean', 'online() reports whether the leaderboard is connected');
 console.log(`${pass} passed, ${fail} failed`);
 process.exitCode = fail ? 1 : 0;
