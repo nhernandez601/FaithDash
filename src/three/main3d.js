@@ -18,6 +18,7 @@ import { SONG_URLS } from '../audio/songs.js';
 import * as A from './art3d.js';
 import * as LN from './lanes.js';
 import * as FX from './fx3d.js';
+import * as BD from './bend.js';
 const LANE_W = A.TRACK_W / 3; // world width of one lane
 import logoUrl from '../assets/logo.webp';
 
@@ -106,6 +107,7 @@ const burst = new FX.BurstRing(scene);                      // light ring on PER
 const streaks = new FX.SpeedLines(scene, MOBILE ? 16 : 36);  // faint light streaks rushing past
 const clouds = new FX.CloudLayer(scene);                    // drifting cloud sheets under the road
 const aurora = A.makeAurora(); scene.add(aurora);
+for (const m of [sparks.pts.material, flames.mat, burst.m.material]) BD.patchMaterial(m); // particles follow the twisting road
 // far-away islands fade into the same colour as the painted clouds
 A.setSkyColorHook((col, img) => {
   if (scene.fog) scene.fog.color.copy(col).lerp(new THREE.Color(0x3a2f7a), 0.35);
@@ -152,7 +154,11 @@ function buildWorld(lv) {
   const add = (m) => { root.add(m); return m; };
   G.sky = A.makeSky(th); scene.background = G.sky;
   A.buildTrack(lv, root, M);
-  G.floaters = A.buildScenery(lv, root, th);
+  // twisting / spiral stretches (drawing only, see bend.js); the scenery is kept apart so it does not bend
+  BD.setZones(BD.planBends(lv, (LEVEL_DEFS.find((d) => d.id === lv.id) || {}).tier));
+  const scen = new THREE.Group(); root.add(scen);
+  G.floaters = A.buildScenery(lv, scen, th);
+  const sceneryMats = new Set(); scen.traverse((o) => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => sceneryMats.add(m)); });
   G.gears = A.buildLandmarks(lv, root, M);
   // rhythm obstacles get 1-2 lanes each (dodge or jump); the sim steps against a per-lane copy of the level (lanes.js)
   G.hzLanes = LN.assignHazardLanes(lv); G.lvLanes = LN.laneLevels(lv, G.hzLanes);
@@ -190,6 +196,7 @@ function buildWorld(lv) {
   G.mark = add(A.makeFloorMark()); G.mark.userData.dyn = true;
   for (const d of G.dyn) d.g.userData.dyn = true;
   A.bakeStatic(root); // merge everything that never moves into a few big meshes (far fewer draw calls)
+  BD.patchTree(root, sceneryMats);
   // the ground heights, for the shadow under the hero
   G.tops = lv.solids.filter((s) => s.y1 > s.y0).map((s) => [s.x, s.x + s.w, s.y1]);
 }
@@ -277,6 +284,7 @@ function updateDynamic(t, wall) {
 // 3/4 view: the chase camera sits CHASE_ANGLE degrees off to the right of the track, CHASE_DIST back, looking well ahead
 const CHASE_ANGLE = 52;
 const CHASE_DIST = 10.5;
+const BEND_P = new THREE.Vector3(), BEND_L = new THREE.Vector3();
 function updateCamera(v, dt) {
   const z = wz(v.x), y = v.y;
   // the camera follows height slowly, so jumps don't bob the whole screen
@@ -304,8 +312,18 @@ function updateCamera(v, dt) {
   else { want.set(5.5, y * 0.7 + 5.2, z + 7.5); look.set(-0.5, y + 0.8, z - 6); }
   const k = G.camPos.lengthSq() === 0 ? 1 : 1 - Math.exp(-dt * 6); // glide between camera styles; the music clock is not affected
   G.camPos.lerp(want, k); G.camLook.lerp(look, k);
-  camera.position.copy(G.camPos);
-  camera.lookAt(G.camLook);
+  // on a twist / spiral the camera rides the bent road and rolls with it (most of the way), so the world spins around you
+  const cp = BEND_P.copy(G.camPos), cl = BEND_L.copy(G.camLook);
+  let roll = 0;
+  if (G.cam === 'chase' && !G.attract && !G.showcase) {
+    // the whole camera rig turns around the road's axis with the runner (fully on a spiral, 3/4 on a twist): the hero keeps its place on screen,
+    // the road ahead visibly twists, and the sky and islands swing round
+    const bd = BD.angleAt(v.x + PW / 2); roll = bd.a * (bd.z && bd.z.kind === BD.SPIRAL ? 1 : 0.75);
+    if (roll) for (const q of [cp, cl]) { const c = Math.cos(roll), sn = Math.sin(roll), yy = q.y - bd.py; const xx = q.x * c - yy * sn; q.y = q.x * sn + yy * c + bd.py; q.x = xx; }
+  }
+  camera.up.set(-Math.sin(roll), Math.cos(roll), 0);
+  camera.position.copy(cp);
+  camera.lookAt(cl);
   if (G.sky) A.fitSky(G.sky, camera.aspect, (camera.position.z * 0.00004) % 1 + 0.04 * Math.sin(G.attractT * 0.1), Math.max(-1, Math.min(1, (camera.position.y - 5) * 0.03)));
 }
 
@@ -366,7 +384,8 @@ function hud(p, ct) {
   const lv = G.level;
   G.score = Math.floor(G.distBank + p.furthest * 5 + G.bonus);
   const [sec, sub] = sectionLabel(p, ct);
-  $('h-sec').textContent = sec; $('h-flavor').textContent = sub.toUpperCase();
+  const bz = BD.getZones().find((z) => p.furthest < z.x1 && p.furthest > z.x0 - 3 * lv.speed);
+  $('h-sec').textContent = sec; $('h-flavor').textContent = bz ? (bz.kind === BD.SPIRAL ? '🌀 SPIRAL!' : '〰 TWIST!') : sub.toUpperCase();
   $('h-prog').style.width = Math.min(100, (p.furthest / lv.finishX) * 100) + '%';
   $('h-coins').textContent = G.coins;
   $('h-lives').innerHTML = `${G.lives} / ${LIVES} <b>♥</b>`;
@@ -395,15 +414,15 @@ function autoQuality(ms, wall) {
 
 // ---------- main loop ----------
 let lastDraw = 0;
-function frame(wall) {
-  requestAnimationFrame(frame);
+function frame(wall, once) {
+  if (!once) requestAnimationFrame(frame);
   // phones: cap at 60 fps (120 Hz screens would otherwise double the work and drain the battery)
   if (MOBILE && wall - lastDraw < 15) return;
   lastDraw = wall;
   renderer.info.reset();
   autoQuality(wall - G.wall, wall);
   grade.uniforms.time.value = (wall % 10000) / 1000;
-  const dt = Math.min(0.1, (wall - G.wall) / 1000 || 0.016); G.wall = wall;
+  const dt = Math.max(0, Math.min(0.1, (wall - G.wall) / 1000 || 0.016)); G.wall = wall;
   const lv = G.level; if (!lv) { composer.render(); return; }
   const p = G.p;
   let ct = G.clock.t;
@@ -455,6 +474,7 @@ function frame(wall) {
     const q = G.prev;
     if (q && !p.dead && p.t > q.t) { const a = Math.max(0, Math.min(1, (ct - q.t) / (p.t - q.t))); v.x = q.x + (p.x - q.x) * a; v.y = q.y + (p.y - q.y) * a; v.rot = q.rot + (p.rot - q.rot) * a; }
     updatePlayer(v, p, dt); updateDynamic(ct, wall); updateCamera(v, dt);
+    if (G.player) BD.patchLive(G.player); // the hero follows twists / spirals (its Blender model can load late)
     if (shake > 0) { shake = Math.max(0, shake - dt); camera.position.x += (Math.random() - 0.5) * shake; camera.position.y += (Math.random() - 0.5) * shake; }
     hud(p, ct);
   }
@@ -767,5 +787,5 @@ show('menu');
 // build the first world once the Blender models are in (falls back to code shapes if they fail)
 A.loadAssets().finally(() => previewLevel('drop'));
 if (new URLSearchParams(location.search).has('nointro')) $('intro').classList.add('hidden'); else playIntro();
-window.__fd3 = { G, start, THREE, scene, camera, renderer, bloom, flames, sparks, stageClear, openQuiz, answer, loadStage }; // test hooks only
+window.__fd3 = { G, start, THREE, scene, camera, renderer, bloom, flames, sparks, stageClear, openQuiz, answer, loadStage, BD, frame }; // test hooks only (frame(t, true) draws one frame)
 requestAnimationFrame(frame);

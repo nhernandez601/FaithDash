@@ -31,15 +31,18 @@ const TIER_CFG = {
     rest: { coins: 7, forks: 4, zones: 6, zoneKinds: ['ship', 'ship', 'grav', 'ship', 'grav', 'ship'], secrets: 3, portalChance: 0, orbChance: 0.7, diff: 1.0, pressEvery: 2, margin: 0.05, platFrom: 0, spinnerFrom: 0, pulseFrom: 0, movesawFrom: 0, tripleFrom: 0, chainMax: 5 },
   },
 };
-// [id, song, tier, seed]. Ids 1-3 are the original three levels (kept so their bakes stay valid).
+// [id, song, tier, seed, overrides?]. Ids 1-3 are the original three levels (kept so their bakes stay valid).
+// Ship sections are long, so on the shorter songs 6 of them leave too little room for forks / secret coins: those stages
+// get 5 sections (FIVE).
+const FIVE = { zones: 5, zoneKinds: ['ship', 'grav', 'ship', 'grav', 'ship'] };
 const STAGE_LIST = [
-  [1, 'drop', 'easy', 11], [4, 'drop', 'medium', 51], [5, 'drop', 'hard', 61],
-  [6, 'boss', 'easy', 71], [2, 'boss', 'medium', 25], [7, 'boss', 'hard', 81],
+  [1, 'drop', 'easy', 11], [4, 'drop', 'medium', 51], [5, 'drop', 'hard', 63, FIVE],
+  [6, 'boss', 'easy', 71, FIVE], [2, 'boss', 'medium', 25], [7, 'boss', 'hard', 85, FIVE],
   [8, 'intense', 'easy', 91], [9, 'intense', 'medium', 101], [3, 'intense', 'hard', 41],
 ];
-export const LEVEL_DEFS = STAGE_LIST.map(([id, song, tier, seed]) => {
+export const LEVEL_DEFS = STAGE_LIST.map(([id, song, tier, seed, over]) => {
   const t = TIER_CFG[tier], m = getBeatMap(song);
-  return { id, name: t.name, difficulty: t.difficulty, song, tier, speed: t.speed, bpm: m.bpm, beats: m.endBeat, seed, ...t.rest };
+  return { id, name: t.name, difficulty: t.difficulty, song, tier, speed: t.speed, bpm: m.bpm, beats: m.endBeat, seed, ...t.rest, ...over };
 });
 // the level id for a song's stage (0 = easy, 1 = medium, 2 = hard)
 export const stageId = (song, stage) => LEVEL_DEFS.find((d) => d.song === song && d.tier === TIERS[Math.min(2, stage)]).id;
