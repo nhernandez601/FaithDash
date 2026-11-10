@@ -145,6 +145,25 @@
     #msg { position: fixed; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; pointer-events: none; font-family: 'Barlow Condensed', sans-serif; font-size: 64px; font-weight: 700; letter-spacing: .06em; text-shadow: 0 4px 30px rgba(0,0,0,.7); }
 
     /* ---------- pause / results cards ---------- */
+    .mgroup { display: flex; gap: 10px; align-items: center; }
+    .namepill { color: #fff; cursor: pointer; font: inherit; text-align: left; max-width: 46vw; }
+    .namepill b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30vw; display: block; }
+    #nameinput { font: 600 18px 'Barlow Condensed', sans-serif; letter-spacing: .04em; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.08); color: #fff; outline: none; text-align: center; }
+    #nameinput:focus { border-color: var(--mint); }
+    .nerr { min-height: 16px; font-size: 12px; color: #ff8a8a; }
+    .rcard { width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 20px 22px; }
+    .rstatus { font-size: 12px; color: var(--dim); min-height: 16px; }
+    .rlist { list-style: none; margin: 0; padding: 0; overflow-y: auto; max-height: 46vh; text-align: left; }
+    .rlist li { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 14px; }
+    .rlist li .rk { font: 700 18px 'Barlow Condensed', sans-serif; color: var(--dim); }
+    .rlist li:nth-child(1) .rk { color: #ffd23a; } .rlist li:nth-child(2) .rk { color: #d8e2f0; } .rlist li:nth-child(3) .rk { color: #e0a070; }
+    .rlist li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .rlist li .nm small { display: block; font-size: 10px; letter-spacing: .14em; color: var(--dim); }
+    .rlist li .sc { font: 700 20px 'Barlow Condensed', sans-serif; color: var(--gold); }
+    .rlist li.me { background: rgba(127,232,255,.1); border-radius: 8px; }
+    .rlist li.gap { display: block; text-align: center; color: var(--dim); border: 0; padding: 2px; }
+    .orank { font-size: 13px; color: var(--mint); min-height: 18px; }
+    #ranks, #namebox { z-index: 30; } /* above the results card they can open from */
+    @media (max-height: 500px) { .rcard { padding: 12px 16px; gap: 8px; } .rcard h2 { font-size: 28px; } .rlist { max-height: 38vh; } .rlist li { padding: 5px 8px; } }
     .modal { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(6,4,20,.6); backdrop-filter: blur(6px); }
     .card { background: rgba(16,12,44,.9); border: 1px solid var(--line); border-radius: 16px; padding: 28px 30px; min-width: min(340px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 12px; text-align: center; }
     .card h2 { margin: 0; font-family: 'Barlow Condensed', sans-serif; font-size: 40px; letter-spacing: .04em; }
@@ -196,8 +215,9 @@
   <div id="menu">
     <div id="iostip" class="hidden">For full screen on iPhone: tap <b>Share</b> then <b>Add to Home Screen</b>, and play from the new icon.<button id="iosok">OK</button></div>
     <div class="mtop">
-      <div class="pill"><i>★</i><div><small>BEST</small><b id="mbest">00000</b></div></div>
-      <button class="icon" id="settingsbtn" aria-label="Settings">⚙</button>
+      <div class="mgroup"><div class="pill"><i>★</i><div><small>BEST</small><b id="mbest">00000</b></div></div>
+        <button class="pill namepill" id="namebtn"><i>👤</i><div><small>PLAYER</small><b id="pname">SET NAME</b></div></button></div>
+      <div class="mgroup"><button class="icon" id="ranksbtn" aria-label="Leaderboard">🏆</button><button class="icon" id="settingsbtn" aria-label="Settings">⚙</button></div>
     </div>
     <div class="mlogo"><img alt="Faith Dash" /><span>ONE PATH · YOUR SOUNDTRACK</span></div>
     <div class="mside l"><button class="icon big-icon" id="customize" aria-label="Skins">🎨</button><label>SKINS</label></div>
@@ -224,12 +244,29 @@
     </div>
   </div>
 
+  <div id="namebox" class="modal hidden"><div class="card">
+    <h2>Gamer name</h2>
+    <p class="help">This name shows on the leaderboard. 3 to 16 letters or numbers.</p>
+    <input id="nameinput" maxlength="16" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Your gamer name" />
+    <div class="nerr" id="nameerr"></div>
+    <button class="btn" id="namesave">SAVE</button>
+    <button class="btn alt" id="namecancel">CANCEL</button>
+  </div></div>
+
+  <div id="ranks" class="modal hidden"><div class="card rcard">
+    <h2>Leaderboard</h2>
+    <div class="seg" id="rseg"></div>
+    <div class="rstatus" id="rstatus"></div>
+    <ol class="rlist" id="rlist"></ol>
+    <button class="btn" id="ranksclose">DONE</button>
+  </div></div>
+
   <div id="settings" class="modal hidden"><div class="card">
     <h2>Settings</h2>
     <div class="lab">PICTURE QUALITY</div>
     <div class="seg" id="qseg"><button data-q="auto">Auto</button><button data-q="high">High</button><button data-q="ultra">Ultra 4K</button></div>
     <div class="lab">HOW TO PLAY</div>
-    <p class="help">One run, three stages: the song repeats and gets harder each time (Easy, Medium, then Hard). Coin gates ask a question: a right answer gives back a life (up to 3), raises your multiplier and adds points; a wrong answer costs nothing. The run ends when you are out of lives.<br>Phone: ◀ ▶ change lane, ▲ jump (hold to fly), ▼ roll; you can also swipe. Keyboard: Space jump, ← → lanes, ↓ roll, 1-4 answer.</p>
+    <p class="help">One continuous run on your song: it keeps going round and gets harder as you go (Easy, Medium, then Hard), from dawn into night. Coin gates ask a question: a right answer gives back a life (up to 3), raises your multiplier and adds points; a wrong answer costs nothing. The run ends when you are out of lives.<br>Phone: ◀ ▶ change lane, ▲ jump (hold to fly), ▼ roll; you can also swipe. Keyboard: Space jump, ← → lanes, ↓ roll, 1-4 answer.</p>
     <button class="btn alt" id="introbtn">🎬 Watch intro</button>
     <button class="btn" id="settingsclose">DONE</button>
   </div></div>
@@ -277,6 +314,8 @@
     <div class="eyebrow" id="o-sub" style="color:var(--dim)"></div>
     <div class="big" id="o-score">00000</div>
     <div class="grid3"><div>REACHED<b id="o-prog"></b></div><div>BEST STREAK<b id="o-best"></b></div><div>COINS<b id="o-coins"></b></div></div>
+    <div class="orank" id="o-rank"></div>
+    <button class="btn alt" id="o-ranks">🏆 LEADERBOARD</button>
     <button class="btn" id="again">PLAY AGAIN</button>
     <button class="btn alt" id="menubtn">MAIN MENU</button>
   </div></div>
