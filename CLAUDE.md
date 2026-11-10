@@ -2,11 +2,17 @@
 
 Last updated: 2026-11-09. Version: **v6.2** (`GEN_VERSION = 13`).
 
+## 2D game removed (2026-11-09) — READ FIRST
+- Noe asked to drop the 2D game entirely. **The 3D game is now `index.html`** (it was `3d.html`; `public/3d.html` just forwards old links to `./`). Live site: https://nhernandez601.github.io/FaithDash/ (the GitHub Actions workflow `.github/workflows/deploy-pages.yml` publishes on every push to main; Pages source = GitHub Actions).
+- Deleted (still in git history): Phaser and the 2D app (`src/app.js`, `main.js`, `config.js`, `styles.css`, `src/ui/`, `src/render/`), the single-file build `FaithDash.html` + vite-plugin-singlefile, the Supabase leaderboard (`supabase/`, `core/leaderboard.js`, `scripts/gen-sql.mjs`), `core/storage.js`, `core/fsm.js`, 2D-only art (menu, skin_*.webp, tex2) and the 2D browser tests.
+- Kept because the 3D game or its tests use them: `src/game/*` (sim, levels, prover, run), `src/audio/*`, `core/bank.js` + `data/questions.js` (trivia bank, for later), `scripts/bake-levels.mjs`. `npm test` = levels + sim + lanes tests.
+- To play locally: `start.bat` (dev server opens the 3D game). Sections below that describe the 2D game, `FaithDash.html` or `/3d.html` are history.
+
 ## Who you are working with
 - **Owner: Noe Hernandez**, an IT help desk specialist. He knows networking and a few command / PowerShell lines, but **not coding**. Explain things in plain language, avoid jargon, and give him things he can double-click or copy.
 - After every change, give a short, honest test report: **Passed / Failed / Not tested / Blocked**. Never claim something was play-tested by a human or listened to unless it was.
 - He judges the game by **playing it**. He has said it felt "not fun", then "not much difference", and asked for harder play. Keep him in the loop on how it feels.
-- Project folder on his PC: `C:\XboxGames\test\faith-dash\`. **The file he double-clicks is `FaithDash.html` at the folder root.** It is a single-file build and must be rebuilt (`SINGLE=1 npx vite build`, then copy `dist-single/index.html` to `FaithDash.html`) after any change, or he keeps seeing the old version. (This happened once and confused him.)
+- Project folder on his PC: `C:\XboxGames\test\faith-dash\`. He plays the live site (GitHub Pages) or `start.bat`. (`FaithDash.html`, the old 2D single-file build, is gone.)
 
 ## What the game is
 A browser **rhythm platformer** in the style of Geometry Dash, with **Bible-trivia coin gates**. It runs on desktop, Android Chrome and iOS Safari (PWA, local saves). There are 3 levels, each built on one real song so that every obstacle sits on a drum hit.

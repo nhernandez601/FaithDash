@@ -8,17 +8,14 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "bake": "node scripts/bake-levels.mjs",
-    "test:music": "node tests/music.mjs",
     "test:levels": "node tests/levels.test.mjs",
-    "test": "node tests/levels.test.mjs && node tests/sim.test.mjs"
+    "test": "node tests/levels.test.mjs && node tests/sim.test.mjs && node tests/lanes.test.mjs"
   },
   "dependencies": {
-    "phaser": "^3.90.0",
     "three": "^0.170.0"
   },
   "devDependencies": {
     "playwright-core": "*",
-    "vite": "^5.4.0",
-    "vite-plugin-singlefile": "*"
+    "vite": "^5.4.0"
   }
 }

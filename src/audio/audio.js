@@ -2,7 +2,7 @@
 // The songs play through Web Audio and the AUDIO CLOCK is the master clock of the game: the simulation is advanced to wherever
 // the music currently is (see songTime()), so the two can never drift apart. Seconds into a song == seconds into the level.
 // The synthesized tracks (used for the practice run, or if a song cannot be loaded) run from the simulation clock instead.
-import { hash } from '../render/pen.js';
+const hash = (n) => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 
 const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
 

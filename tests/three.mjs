@@ -1,4 +1,4 @@
-// 3D test page (Milestone 1): loads /3d.html, builds each level in 3D, moves the runner with the prover's own inputs to a
+// 3D test page (Milestone 1): loads /, builds each level in 3D, moves the runner with the prover's own inputs to a
 // few interesting spots and takes screenshots. Checks the page makes no errors and that something was actually drawn.
 // Usage: node tests/three.mjs   (writes tests/shots/3d_*.png)
 import { chromium } from 'playwright-core';
@@ -11,7 +11,7 @@ await new Promise((r) => setTimeout(r, 3500));
 const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium', args: ['--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
 const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
 const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); }); p.on('response', (r) => { if (r.status() === 404) errs.push('404 ' + r.url()); });
-await p.goto(`http://localhost:${port}/3d.html`); await p.waitForTimeout(1500);
+await p.goto(`http://localhost:${port}/`); await p.waitForTimeout(1500);
 let fail = 0;
 const check = (ok, msg) => { console.log((ok ? 'PASS ' : 'FAIL ') + msg); if (!ok) fail++; };
 for (const [lvl, kind, beatsIn, cam, name] of [[1, null, 0, 'chase', 'l1_start'], [1, 'ship', 6, 'chase', 'l1_ship'], [1, 'ship', 6, 'drone', 'l1_ship_drone'], [2, 'wave', 6, 'chase', 'l2_wave'], [3, 'grav', 5, 'chase', 'l3_grav']]) {
