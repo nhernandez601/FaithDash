@@ -22,13 +22,36 @@ export const PARTS = [
   'molest', 'pedophil', 'paedo', 'cocksuck', 'asshole', 'arsehole', 'asshat', 'asswipe', 'assface', 'asslick', 'bastard',
   'bollock', 'douche', 'piss', 'damn', 'goddam', 'nazi', 'hitler', 'kkk', 'retard', 'kike', 'chink', 'wetback',
   'tranny', 'towelhead', 'raghead', 'killyourself', 'cocaine', 'xxx',
+  'erection', 'fellatio', 'cunnilingus', 'clitoris', 'genital', 'testicle', 'scrotum', 'crotch', 'jackoff', 'jerkoff',
+  'masturb', 'queef', 'rimjob', 'buttplug', 'buttsex', 'nutsack', 'ballsack', 'boner', 'stripper',
+  'adolf', 'heil', 'holocaust', 'auschwitz', 'reich', 'himmler', 'goebbels', 'mengele', 'mussolini', 'stalin', 'gestapo',
+  'swastika', 'whitepower', 'whitepride', 'aryannation', 'binladen', 'alqaeda', 'taliban', 'jihadi',
+  'dahmer', 'columbine', 'schoolshoot', 'massshoot', 'terroris', 'suicide', 'genocide',
+  'satan', 'lucifer', 'antichrist', 'beelzebub', 'godisdead', 'jesussuck', 'godsuck',
 ];
 // blocked only as a whole word
 export const WORDS = [
   'ass', 'azz', 'arse', 'cum', 'semen', 'tit', 'tits', 'titty', 'anal', 'anus', 'sex', 'rape', 'raped', 'cock', 'pedo',
   'hoe', 'hoes', 'thot', 'fag', 'fags', 'homo', 'lesbo', 'dyke', 'coon', 'gook', 'spic', 'wop', 'jap', 'paki', 'beaner',
   'nig', 'nigs', 'spaz', 'prick', 'crap', 'hell', 'kys', 'wtf', 'stfu', 'nsfw', 'meth', 'weed', 'milf',
+  'butt', 'butts', 'clit', 'isis', 'kkk', 'ss', 'nsdap', 'schlong', 'pecker', 'spunk', 'hooker', 'lynching',
 ];
+// joke names that SOUND like something rude ("Hugh Jass" = huge ass, "Mike Hunt", "Ben Dover"...) and a few names that
+// are inappropriate however they are spelled. Matched anywhere with spaces removed, and LOOSELY: any vowel can stand
+// for any vowel, s/z are the same, c/k/q are the same, and letters may repeat ("Hugh Jas", "Seymore Butt", "Mo Lester").
+// Every entry is at least 6 letters (tested): short ones match too many normal words when matched loosely.
+export const JOKES = [
+  'hughjass', 'hewjass', 'hughjanus', 'hughmungus', 'hughgrection', 'hugerection', 'hughgass',
+  'mikehunt', 'mikeoxlong', 'mikerotch', 'mikelitoris', 'mikehawk',
+  'bendover', 'eileendover', 'bentover', 'philmccracken', 'philmcrack', 'phillatio', 'connilingus',
+  'seymourbutt', 'seemorebutt', 'amandahugginkiss', 'heywoodjablowme', 'haywoodjablome', 'jablowme', 'jablome',
+  'jackmehoff', 'jackmeoff', 'dixienormous', 'ivanatinkle', 'harryballs',
+  'hairyballs', 'opheliaballs', 'cravenmoorehead', 'clothesoff', 'tesstickle', 'moelester',
+  'mcockiner', 'ballsdeep', 'suckmydick', 'eatmyshort',
+  'hitler', 'heilhitler', 'siegheil', 'lucifer',
+];
+// number codes used by hate groups (checked on the name as typed, before numbers are read as letters)
+export const CODES = ['1488', '14 88', '666', '6 6 6'];
 // harmless words that end in "ass"
 export const ASS_OK = [
   'bass', 'class', 'glass', 'grass', 'mass', 'pass', 'brass', 'lass', 'sass', 'crass', 'compass', 'surpass', 'embarrass',
@@ -43,6 +66,14 @@ export const pattern = (w) => w.split('').map((c) => c + '+').join('');
 const squeeze = (s) => s.replace(/(.)\1{2,}/g, '$1$1');      // "asssss" -> "ass"
 const RX_PARTS = PARTS.map((p) => new RegExp(pattern(p)));
 const RX_WORDS = WORDS.map((w) => new RegExp('^' + pattern(w) + '$'));
+// loose ("sounds like") pattern: vowels are interchangeable, s=z, c=k=q, every letter may repeat. The generator writes
+// these exact patterns into the database, so both sides match the same way.
+export function loosePattern(w) {
+  const cls = (c) => (/[aeiouy]/.test(c) ? '[aeiouy]+' : /[sz]/.test(c) ? '[sz]+' : /[ckq]/.test(c) ? '[ckq]+' : c + '+');
+  const parts = w.split('').map(cls);
+  return parts.filter((p, i) => i === 0 || p !== parts[i - 1]).join('');
+}
+const RX_JOKES = JOKES.map((w) => new RegExp(loosePattern(w)));
 // the different ways a name could be read (each keeps its spaces, so words can still be found)
 export function readings(name) {
   const base = name.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().replace(/[_.\-]/g, ' ');
@@ -56,6 +87,8 @@ export function readings(name) {
 }
 // true when the name (already in the allowed character set) contains something blocked
 export function isBlocked(name) {
+  const typed = name.toLowerCase().replace(/[_.\-]/g, ' ');
+  if (CODES.some((c) => typed.includes(c) || typed.replace(/ /g, '').includes(c.replace(/ /g, '')))) return true;
   const all = readings(name);
   for (let i = 0; i < all.length; i++) {
     const r = all[i];
@@ -63,6 +96,7 @@ export function isBlocked(name) {
     const words = r.split(/[^a-z]+/).filter(Boolean);
     words.push(compact);
     if (RX_PARTS.some((rx) => rx.test(compact))) return true;
+    if (RX_JOKES.some((rx) => rx.test(compact))) return true;
     for (const w of words) {
       if (RX_WORDS.some((rx) => rx.test(w))) return true;
       const sw = squeeze(w);
