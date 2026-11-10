@@ -43,7 +43,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 const MOBILE = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 const QUALITY = {
   auto: MOBILE
-    ? { name: 'Auto', dpr: () => Math.min(window.devicePixelRatio || 1, 1.25), samples: 2, bloom: 0.35, shadow: 512, sharpen: 0, grain: 0 }
+    ? { name: 'Auto', dpr: () => Math.min(window.devicePixelRatio || 1, 1.25), samples: 2, bloom: 0.5, shadow: 512, sharpen: 0, grain: 0 }
     : { name: 'Auto', dpr: () => Math.min(window.devicePixelRatio || 1, 1.75), samples: 4, bloom: 0.5, shadow: 1024, sharpen: 0, grain: 0.012 },
   high: { name: 'High', dpr: () => Math.min(Math.max(window.devicePixelRatio || 1, 1.5), 2), samples: 4, bloom: 1, shadow: 2048, sharpen: 0.22, grain: 0.018 },
   ultra: { name: 'Ultra 4K', dpr: () => Math.min(3, Math.max(window.devicePixelRatio || 1, 2160 / Math.max(1, window.innerHeight))), samples: 8, bloom: 1, shadow: 4096, sharpen: 0.3, grain: 0.02 },
@@ -74,7 +74,7 @@ const rimLight = new THREE.DirectionalLight(0x8fd8ff, 0.9); rimLight.position.se
 // render into a multisampled target: post effects otherwise switch anti-aliasing off and edges look jagged
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: Math.min(QUALITY[quality].samples, renderer.capabilities.maxSamples || 4) }));
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.22, 0.92);
+const bloom = MOBILE ? new UnrealBloomPass(new THREE.Vector2(1, 1), 0.32, 0.1, 0.97) : new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.22, 0.92);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 // colour grade to match the intro film: teal in the shadows, warm gold in the highlights, a little more contrast and
@@ -249,7 +249,7 @@ function updatePlayer(v, p, dt) {
   pl.position.set(lx, grav ? v.y + PH - (PH / 2) * sy : v.y + (PH / 2) * sy, wz(v.x + PW / 2));
   if (p.grounded && !grav && p.mode === MODE.CUBE && !p.dead) {
     const tile = Math.floor(v.x + PW / 2);
-    if (tile !== G.lastTile) { G.lastTile = tile; tiles.spawn(Math.round(L.lx) * LANE_W, v.y + 0.03, wz(tile + 0.5), G.night > 0.5 ? 0xffc46a : 0x7fe8ff, 0.4 + 0.35 * (G.kick || 0)); }
+    if (tile !== G.lastTile) { G.lastTile = tile; tiles.spawn(Math.round(L.lx) * LANE_W, v.y + 0.03, wz(tile + 0.5), G.night > 0.5 ? 0xffc46a : 0x7fe8ff, (MOBILE ? 0.22 : 0.4) + 0.3 * (G.kick || 0)); }
   }
   trail.push(TMPV.set(lx, pl.position.y, pl.position.z + 0.45), !p.dead && !G.attract);
   if (L.roll > 0 && Math.random() < 0.6) sparks.emit(lx, v.y + 0.05, wz(v.x), 2, [0xffc46a, 0x7fe8ff], 1.8, 0.4);
@@ -348,6 +348,7 @@ function updateCamera(v, dt) {
 // night (end of Hard and every round after), with lightning in the night. The road glow, the neon edges, crystals and
 // lasers pulse on the song's kick drum and flare on its drops; lane obstacles flash their floor strips 2 beats ahead.
 const MOOD = {};
+const NEON_DAWN = new THREE.Color(0xffc870);
 let bolt = 0, boltCool = 6;
 function updateLook(t, dt, wall) {
   const lv = G.level, bm = G.bm;
@@ -373,9 +374,10 @@ function updateLook(t, dt, wall) {
   if (scene.fog) scene.fog.color.copy(MOOD.fog);
   const M = G.M;
   if (M) {
-    const k = kick + 0.7 * drop;
-    M.top.emissiveIntensity = 0.85 + 0.35 * MOOD.night + 1.4 * k + 0.25 * heat;
-    M.neon.color.copy(G.neonBase).multiplyScalar(1 + 1.3 * k + 0.4 * MOOD.night);
+    const k = (kick + 0.7 * drop) * (MOBILE ? 0.45 : 1);
+    M.top.emissiveIntensity = (MOBILE ? 0.7 : 0.85) + 0.3 * MOOD.night + 0.8 * k + 0.2 * heat;
+    // the neon edges are warm gold at dawn and turn cyan by dusk (cyan under the golden light looked green)
+    M.neon.color.copy(NEON_DAWN).lerp(G.neonBase, Math.min(1, G.P / 1.6)).multiplyScalar(1 + 0.9 * k + 0.3 * MOOD.night);
     M.laser.color.copy(G.laserBase).multiplyScalar(1 + 1.2 * kick);
     for (const c of M.crystal) c.emissiveIntensity = 0.9 + 1.1 * kick;
     M.hot.emissiveIntensity = 1.6 + 1.4 * kick;
