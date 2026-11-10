@@ -4,9 +4,13 @@
 --   part  = blocked anywhere in the name (spaces/dots removed, letters may repeat)
 --   word  = blocked as a whole word only
 --   ass_ok = normal words ending in "ass" (class, grass...) that are allowed
+--   joke  = a ready-made loose ("sounds like") pattern for joke names such as Hugh Jass, matched anywhere
+--   code  = a number code (1488, 666) looked for in the name as typed
 -- To block one more word right away without a game update:  insert into fd_bad_words values ('word', 'part');
 
-create table if not exists public.fd_bad_words (word text not null, kind text not null check (kind in ('part', 'word', 'ass_ok')), primary key (word, kind));
+create table if not exists public.fd_bad_words (word text not null, kind text not null, primary key (word, kind));
+alter table public.fd_bad_words drop constraint if exists fd_bad_words_kind_check;
+alter table public.fd_bad_words add constraint fd_bad_words_kind_check check (kind in ('part', 'word', 'ass_ok', 'joke', 'code'));
 alter table public.fd_bad_words enable row level security;
 revoke all on public.fd_bad_words from anon, authenticated;
 insert into public.fd_bad_words (word, kind) values
@@ -79,6 +83,58 @@ insert into public.fd_bad_words (word, kind) values
   ('killyourself', 'part'),
   ('cocaine', 'part'),
   ('xxx', 'part'),
+  ('erection', 'part'),
+  ('fellatio', 'part'),
+  ('cunnilingus', 'part'),
+  ('clitoris', 'part'),
+  ('genital', 'part'),
+  ('testicle', 'part'),
+  ('scrotum', 'part'),
+  ('crotch', 'part'),
+  ('jackoff', 'part'),
+  ('jerkoff', 'part'),
+  ('masturb', 'part'),
+  ('queef', 'part'),
+  ('rimjob', 'part'),
+  ('buttplug', 'part'),
+  ('buttsex', 'part'),
+  ('nutsack', 'part'),
+  ('ballsack', 'part'),
+  ('boner', 'part'),
+  ('stripper', 'part'),
+  ('adolf', 'part'),
+  ('heil', 'part'),
+  ('holocaust', 'part'),
+  ('auschwitz', 'part'),
+  ('reich', 'part'),
+  ('himmler', 'part'),
+  ('goebbels', 'part'),
+  ('mengele', 'part'),
+  ('mussolini', 'part'),
+  ('stalin', 'part'),
+  ('gestapo', 'part'),
+  ('swastika', 'part'),
+  ('whitepower', 'part'),
+  ('whitepride', 'part'),
+  ('aryannation', 'part'),
+  ('binladen', 'part'),
+  ('alqaeda', 'part'),
+  ('taliban', 'part'),
+  ('jihadi', 'part'),
+  ('dahmer', 'part'),
+  ('columbine', 'part'),
+  ('schoolshoot', 'part'),
+  ('massshoot', 'part'),
+  ('terroris', 'part'),
+  ('suicide', 'part'),
+  ('genocide', 'part'),
+  ('satan', 'part'),
+  ('lucifer', 'part'),
+  ('antichrist', 'part'),
+  ('beelzebub', 'part'),
+  ('godisdead', 'part'),
+  ('jesussuck', 'part'),
+  ('godsuck', 'part'),
   ('ass', 'word'),
   ('azz', 'word'),
   ('arse', 'word'),
@@ -122,6 +178,18 @@ insert into public.fd_bad_words (word, kind) values
   ('meth', 'word'),
   ('weed', 'word'),
   ('milf', 'word'),
+  ('butt', 'word'),
+  ('butts', 'word'),
+  ('clit', 'word'),
+  ('isis', 'word'),
+  ('kkk', 'word'),
+  ('ss', 'word'),
+  ('nsdap', 'word'),
+  ('schlong', 'word'),
+  ('pecker', 'word'),
+  ('spunk', 'word'),
+  ('hooker', 'word'),
+  ('lynching', 'word'),
   ('bass', 'ass_ok'),
   ('class', 'ass_ok'),
   ('glass', 'ass_ok'),
@@ -143,14 +211,65 @@ insert into public.fd_bad_words (word, kind) values
   ('overpass', 'ass_ok'),
   ('impass', 'ass_ok'),
   ('trespass', 'ass_ok'),
-  ('cutlass', 'ass_ok')
+  ('cutlass', 'ass_ok'),
+  ('h+[aeiouy]+g+h+j+[aeiouy]+[sz]+', 'joke'),
+  ('h+[aeiouy]+w+j+[aeiouy]+[sz]+', 'joke'),
+  ('h+[aeiouy]+g+h+j+[aeiouy]+n+[aeiouy]+[sz]+', 'joke'),
+  ('h+[aeiouy]+g+h+m+[aeiouy]+n+g+[aeiouy]+[sz]+', 'joke'),
+  ('h+[aeiouy]+g+h+g+r+[aeiouy]+[ckq]+t+[aeiouy]+n+', 'joke'),
+  ('h+[aeiouy]+g+[aeiouy]+r+[aeiouy]+[ckq]+t+[aeiouy]+n+', 'joke'),
+  ('h+[aeiouy]+g+h+g+[aeiouy]+[sz]+', 'joke'),
+  ('m+[aeiouy]+[ckq]+[aeiouy]+h+[aeiouy]+n+t+', 'joke'),
+  ('m+[aeiouy]+[ckq]+[aeiouy]+x+l+[aeiouy]+n+g+', 'joke'),
+  ('m+[aeiouy]+[ckq]+[aeiouy]+r+[aeiouy]+t+[ckq]+h+', 'joke'),
+  ('m+[aeiouy]+[ckq]+[aeiouy]+l+[aeiouy]+t+[aeiouy]+r+[aeiouy]+[sz]+', 'joke'),
+  ('m+[aeiouy]+[ckq]+[aeiouy]+h+[aeiouy]+w+[ckq]+', 'joke'),
+  ('b+[aeiouy]+n+d+[aeiouy]+v+[aeiouy]+r+', 'joke'),
+  ('[aeiouy]+l+[aeiouy]+n+d+[aeiouy]+v+[aeiouy]+r+', 'joke'),
+  ('b+[aeiouy]+n+t+[aeiouy]+v+[aeiouy]+r+', 'joke'),
+  ('p+h+[aeiouy]+l+m+[ckq]+r+[aeiouy]+[ckq]+[aeiouy]+n+', 'joke'),
+  ('p+h+[aeiouy]+l+m+[ckq]+r+[aeiouy]+[ckq]+', 'joke'),
+  ('p+h+[aeiouy]+l+[aeiouy]+t+[aeiouy]+', 'joke'),
+  ('[ckq]+[aeiouy]+n+[aeiouy]+l+[aeiouy]+n+g+[aeiouy]+[sz]+', 'joke'),
+  ('[sz]+[aeiouy]+m+[aeiouy]+r+b+[aeiouy]+t+', 'joke'),
+  ('[sz]+[aeiouy]+m+[aeiouy]+r+[aeiouy]+b+[aeiouy]+t+', 'joke'),
+  ('[aeiouy]+m+[aeiouy]+n+d+[aeiouy]+h+[aeiouy]+g+[aeiouy]+n+[ckq]+[aeiouy]+[sz]+', 'joke'),
+  ('h+[aeiouy]+w+[aeiouy]+d+j+[aeiouy]+b+l+[aeiouy]+w+m+[aeiouy]+', 'joke'),
+  ('h+[aeiouy]+w+[aeiouy]+d+j+[aeiouy]+b+l+[aeiouy]+m+[aeiouy]+', 'joke'),
+  ('j+[aeiouy]+b+l+[aeiouy]+w+m+[aeiouy]+', 'joke'),
+  ('j+[aeiouy]+b+l+[aeiouy]+m+[aeiouy]+', 'joke'),
+  ('j+[aeiouy]+[ckq]+m+[aeiouy]+h+[aeiouy]+f+', 'joke'),
+  ('j+[aeiouy]+[ckq]+m+[aeiouy]+f+', 'joke'),
+  ('d+[aeiouy]+x+[aeiouy]+n+[aeiouy]+r+m+[aeiouy]+[sz]+', 'joke'),
+  ('[aeiouy]+v+[aeiouy]+n+[aeiouy]+t+[aeiouy]+n+[ckq]+l+[aeiouy]+', 'joke'),
+  ('h+[aeiouy]+r+[aeiouy]+b+[aeiouy]+l+[sz]+', 'joke'),
+  ('h+[aeiouy]+r+[aeiouy]+b+[aeiouy]+l+[sz]+', 'joke'),
+  ('[aeiouy]+p+h+[aeiouy]+l+[aeiouy]+b+[aeiouy]+l+[sz]+', 'joke'),
+  ('[ckq]+r+[aeiouy]+v+[aeiouy]+n+m+[aeiouy]+r+[aeiouy]+h+[aeiouy]+d+', 'joke'),
+  ('[ckq]+l+[aeiouy]+t+h+[aeiouy]+[sz]+[aeiouy]+f+', 'joke'),
+  ('t+[aeiouy]+[sz]+t+[aeiouy]+[ckq]+l+[aeiouy]+', 'joke'),
+  ('m+[aeiouy]+l+[aeiouy]+[sz]+t+[aeiouy]+r+', 'joke'),
+  ('m+[ckq]+[aeiouy]+[ckq]+[aeiouy]+n+[aeiouy]+r+', 'joke'),
+  ('b+[aeiouy]+l+[sz]+d+[aeiouy]+p+', 'joke'),
+  ('[sz]+[aeiouy]+[ckq]+m+[aeiouy]+d+[aeiouy]+[ckq]+', 'joke'),
+  ('[aeiouy]+t+m+[aeiouy]+[sz]+h+[aeiouy]+r+t+', 'joke'),
+  ('h+[aeiouy]+t+l+[aeiouy]+r+', 'joke'),
+  ('h+[aeiouy]+l+h+[aeiouy]+t+l+[aeiouy]+r+', 'joke'),
+  ('[sz]+[aeiouy]+g+h+[aeiouy]+l+', 'joke'),
+  ('l+[aeiouy]+[ckq]+[aeiouy]+f+[aeiouy]+r+', 'joke'),
+  ('1488', 'code'),
+  ('14 88', 'code'),
+  ('666', 'code'),
+  ('6 6 6', 'code')
 on conflict do nothing;
 
 -- true when a name contains something blocked (same readings as readings() in names.js)
 create or replace function public.fd_name_blocked(p_name text) returns boolean
 language plpgsql stable security definer set search_path = public as $$
-declare base text; r text; compact text; w text; sw text; i int := 0; rs text[];
+declare base text; r text; compact text; w text; sw text; i int := 0; rs text[]; typed text;
 begin
+  typed := translate(lower(p_name), '_.-', '   ');
+  if exists (select 1 from fd_bad_words b where b.kind = 'code' and (position(b.word in typed) > 0 or position(replace(b.word, ' ', '') in replace(typed, ' ', '')) > 0)) then return true; end if;
   base := translate(lower(regexp_replace(p_name, '([a-z])([A-Z])', '\1 \2', 'g')), '_.-', '   ');
   r := translate(base, '0123456789', 'oizeasgtbg');
   rs := array[
@@ -163,6 +282,7 @@ begin
     i := i + 1;
     compact := regexp_replace(r, '[^a-z]', '', 'g');
     if exists (select 1 from fd_bad_words b where b.kind = 'part' and compact ~ regexp_replace(b.word, '(.)', '\1+', 'g')) then return true; end if;
+    if exists (select 1 from fd_bad_words b where b.kind = 'joke' and compact ~ b.word) then return true; end if;
     for w in select x from regexp_split_to_table(r, '[^a-z]+') x where x <> '' union all select compact loop
       if exists (select 1 from fd_bad_words b where b.kind = 'word' and w ~ ('^' || regexp_replace(b.word, '(.)', '\1+', 'g') || '$')) then return true; end if;
       sw := regexp_replace(w, '(.)\1{2,}', '\1\1', 'g');
