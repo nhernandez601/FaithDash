@@ -19,6 +19,8 @@ import * as A from './art3d.js';
 import * as LN from './lanes.js';
 import * as FX from './fx3d.js';
 import * as BD from './bend.js';
+import * as LK from './look.js';
+import { getBeatMap } from '../audio/music.js';
 const LANE_W = A.TRACK_W / 3; // world width of one lane
 import logoUrl from '../assets/logo.webp';
 
@@ -78,9 +80,9 @@ composer.addPass(new OutputPass());
 // colour grade to match the intro film: teal in the shadows, warm gold in the highlights, a little more contrast and
 // saturation, and a soft vignette. Runs last, on the final picture.
 const grade = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, amount: { value: 1 }, texel: { value: new THREE.Vector2(1 / 1920, 1 / 1080) }, sharpen: { value: 0 }, grain: { value: 0 }, time: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, amount: { value: 1 }, texel: { value: new THREE.Vector2(1 / 1920, 1 / 1080) }, sharpen: { value: 0 }, grain: { value: 0 }, time: { value: 0 }, tint: { value: new THREE.Vector3(1, 1, 1) }, lift: { value: new THREE.Vector3() } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float amount; uniform vec2 texel; uniform float sharpen; uniform float grain; uniform float time; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float amount; uniform vec2 texel; uniform float sharpen; uniform float grain; uniform float time; uniform vec3 tint; uniform vec3 lift; varying vec2 vUv;
     void main(){
       vec4 src = texture2D(tDiffuse, vUv); vec3 c = src.rgb;
       if (sharpen > 0.0) {                               // light sharpening: crisper edges and texture detail
@@ -88,6 +90,7 @@ const grade = new ShaderPass({
                + texture2D(tDiffuse, vUv + vec2(0.0, texel.y)).rgb + texture2D(tDiffuse, vUv - vec2(0.0, texel.y)).rgb;
         c += sharpen * (c * 4.0 - n);
       }
+      c = c * tint + lift;                               // time of day: golden dawn ... night
       float l = dot(c, vec3(0.299, 0.587, 0.114));
       vec3 shadowTint = vec3(-0.02, 0.025, 0.06), highTint = vec3(0.06, 0.025, -0.045);
       c += shadowTint * (1.0 - smoothstep(0.0, 0.5, l)) + highTint * smoothstep(0.45, 1.0, l);
@@ -104,10 +107,14 @@ composer.addPass(grade);
 const sparks = new A.Sparks(scene);
 const flames = new FX.FlameFX(scene, MOBILE ? 450 : 900);   // animated flame sprites, coloured by the cube skin
 const burst = new FX.BurstRing(scene);                      // light ring on PERFECT / GREAT jumps
+const landRing = new FX.BurstRing(scene, 0.35, 1.6);        // a soft ring where the hero lands
+const tiles = new LK.FloorGlow(scene, MOBILE ? 10 : 18, A.TRACK_W / 3); // road tiles light up under the hero
+const trail = new LK.Ribbon(scene, MOBILE ? 14 : 22);       // light ribbon behind the hero
+const shards = new LK.Shards(scene, MOBILE ? 10 : 16);      // the hero breaks apart on a crash
 const streaks = new FX.SpeedLines(scene, MOBILE ? 16 : 36);  // faint light streaks rushing past
 const clouds = new FX.CloudLayer(scene);                    // drifting cloud sheets under the road
 const aurora = A.makeAurora(); scene.add(aurora);
-for (const m of [sparks.pts.material, flames.mat, burst.m.material]) BD.patchMaterial(m); // particles follow the twisting road
+for (const m of [sparks.pts.material, flames.mat, burst.m.material, landRing.m.material]) BD.patchMaterial(m); // particles follow the twisting road
 // far-away islands fade into the same colour as the painted clouds
 A.setSkyColorHook((col, img) => {
   if (scene.fog) scene.fog.color.copy(col).lerp(new THREE.Color(0x3a2f7a), 0.35);
@@ -134,7 +141,7 @@ const G = {
 };
 const STAGE_NAMES = ['EASY', 'MEDIUM', 'HARD'];
 const stageDef = () => LEVEL_DEFS.find((d) => d.id === G.level.id);
-const stageTag = (s = G.stage) => `STAGE ${s + 1} · ${STAGE_NAMES[Math.min(2, s)]}`;
+const stageTag = (s = G.stage) => STAGE_NAMES[Math.min(2, s)] + (s > 2 ? ' +' + (s - 2) : ''); // difficulty, not a stage: it is one continuous level
 const wz = (x) => -x; // sim x -> world z
 
 function disposeRoot() {
@@ -150,9 +157,9 @@ function buildWorld(lv) {
   scene.background = new THREE.Color(th.fog);
   scene.fog = new THREE.Fog(th.fog, th.fogNear, th.fogFar);
   const root = new THREE.Group(); G.root = root; scene.add(root);
-  const M = A.makeMats(th);
+  const M = G.mats || (G.mats = A.makeMats(th)); // made once: the painted road textures are slow to draw
   const add = (m) => { root.add(m); return m; };
-  G.sky = A.makeSky(th); scene.background = G.sky;
+  G.sky = G.sky || A.makeSky(th); scene.background = G.sky;
   A.buildTrack(lv, root, M);
   // twisting / spiral stretches (drawing only, see bend.js); the scenery is kept apart so it does not bend
   BD.setZones(BD.planBends(lv, (LEVEL_DEFS.find((d) => d.id === lv.id) || {}).tier));
@@ -181,7 +188,10 @@ function buildWorld(lv) {
   }
   for (const s of lv.secrets) { const g = add(A.makeCoin(M, 0.5)); g.position.set(0, s.cy || s.y0 + 2, wz(s.x)); G.dyn.push({ k: 'secret', o: s, g }); }
   for (const c of lv.checkpoints) { const g = add(A.makeCheckpoint(M)); g.position.set(A.TRACK_W / 2 + 0.3, c.y, wz(c.x)); }
-  const fin = add(A.makeFinish(M)); fin.position.set(0, 0, wz(lv.finishX));
+  // no finish line: it is one continuous level. The road runs on past the end until the next stretch takes over.
+  const roadEnd = Math.max(...lv.solids.filter((s) => s.y1 > s.y0).map((s) => s.x + s.w));
+  A.buildTrack({ solids: [{ x: roadEnd, w: 260, y0: -12, y1: 0 }] }, root, M);
+  G.M = M; G.neonBase = M.neon.color.clone(); G.laserBase = M.laser.color.clone();
   // lane obstacles (dodge barriers and roll-under gates): an extra layer on top of the 2D rules, see lanes.js
   G.hz = { list: LN.planLaneHazards(lv), from: 0 };
   for (const h of G.hz.list) {
@@ -229,7 +239,7 @@ function updatePlayer(v, p, dt) {
   else spin.rotation.x = (G.hold ? 0.78 : -0.78) * (grav ? -1 : 1);
   spin.rotation.z = (grav ? Math.PI : 0) - (L.lane - L.lx) * 0.45; // lean into a lane change
   // squash on landing, stretch while jumping
-  if (!G.wasGrounded && p.grounded && p.mode === MODE.CUBE) { G.squash = 1; sparks.emit(lx, v.y + 0.05, wz(v.x + PW / 2), 10, [0xffc46a, 0xffffff, 0x7fe8ff], 2.6, 0.6); }
+  if (!G.wasGrounded && p.grounded && p.mode === MODE.CUBE) { G.squash = 1; if (!grav) landRing.fire(TMPV.set(lx, v.y + 0.38, wz(v.x + PW / 2)), 0x9ff5ff); sparks.emit(lx, v.y + 0.05, wz(v.x + PW / 2), 10, [0xffc46a, 0xffffff, 0x7fe8ff], 2.6, 0.6); }
   G.wasGrounded = p.grounded;
   G.squash = Math.max(0, G.squash - dt * 6);
   const air = !p.grounded && p.mode === MODE.CUBE ? 0.06 : 0;
@@ -237,6 +247,11 @@ function updatePlayer(v, p, dt) {
   const sy = (1 - sq + air) * (1 - 0.52 * tuck), sxz = (1 + sq * 0.6 - air * 0.5) * (1 + 0.12 * tuck);
   pl.scale.set(sxz, sy, sxz);
   pl.position.set(lx, grav ? v.y + PH - (PH / 2) * sy : v.y + (PH / 2) * sy, wz(v.x + PW / 2));
+  if (p.grounded && !grav && p.mode === MODE.CUBE && !p.dead) {
+    const tile = Math.floor(v.x + PW / 2);
+    if (tile !== G.lastTile) { G.lastTile = tile; tiles.spawn(Math.round(L.lx) * LANE_W, v.y + 0.03, wz(tile + 0.5), G.night > 0.5 ? 0xffc46a : 0x7fe8ff, 0.4 + 0.35 * (G.kick || 0)); }
+  }
+  trail.push(TMPV.set(lx, pl.position.y, pl.position.z + 0.45), !p.dead && !G.attract);
   if (L.roll > 0 && Math.random() < 0.6) sparks.emit(lx, v.y + 0.05, wz(v.x), 2, [0xffc46a, 0x7fe8ff], 1.8, 0.4);
   pl.visible = !p.dead;
   // floor mark
@@ -265,6 +280,7 @@ function twinkle(g, wall) {
   gl.scale.setScalar(gl.userData.base * (0.35 + 0.9 * k * k)); gl.material.rotation = wall * 0.0012; gl.material.opacity = 0.4 + 0.6 * k;
 }
 const TMP = { x: 0, y: 0 };
+const TMPV = new THREE.Vector3();
 function updateDynamic(t, wall) {
   const p = G.p;
   for (const d of G.dyn) {
@@ -327,6 +343,50 @@ function updateCamera(v, dt) {
   if (G.sky) A.fitSky(G.sky, camera.aspect, (camera.position.z * 0.00004) % 1 + 0.04 * Math.sin(G.attractT * 0.1), Math.max(-1, Math.min(1, (camera.position.y - 5) * 0.03)));
 }
 
+// ---------- the look of the run: dawn -> night, and the road / hazards pulsing with the music ----------
+// One continuous level: the colours slide from golden dawn (start of Easy) through sunset (Medium) and dusk (Hard) to
+// night (end of Hard and every round after), with lightning in the night. The road glow, the neon edges, crystals and
+// lasers pulse on the song's kick drum and flare on its drops; lane obstacles flash their floor strips 2 beats ahead.
+const MOOD = {};
+let bolt = 0, boltCool = 6;
+function updateLook(t, dt, wall) {
+  const lv = G.level, bm = G.bm;
+  const P = G.attract || !G.p || !lv ? 0 : Math.min(3, G.stage + Math.min(1, G.p.furthest / lv.finishX));
+  G.P = G.P === undefined ? P : G.P + (P - G.P) * Math.min(1, dt * 2);
+  LK.moodAt(G.P, MOOD); G.night = MOOD.night;
+  const live = G.playing && !G.paused && bm && !G.attract;
+  let kick, drop = 0, heat = 0;
+  if (live) { kick = bm.kickAt(t); drop = bm.dropFlashAt(t); heat = bm.heatAt(t); }
+  else { const spb = 60 / 130, ph = ((t / spb) % 1 + 1) % 1; kick = G.paused ? 0 : 0.6 * Math.exp(-ph * spb * 9); } // menu: a gentle pulse
+  G.kick = kick;
+  // lightning at night, on some drops and now and then
+  boltCool -= dt;
+  if (live && MOOD.night > 0.4 && boltCool <= 0 && (drop > 0.95 || Math.random() < dt / 7)) { bolt = 1; boltCool = 3 + Math.random() * 5; }
+  bolt = Math.max(0, bolt - dt * 3.2);
+  const fl = bolt > 0 ? bolt * (0.6 + 0.4 * Math.sin(wall * 0.09)) : 0; // with a little flicker
+  const u = grade.uniforms;
+  u.tint.value.set(MOOD.tint[0], MOOD.tint[1], MOOD.tint[2]);
+  u.lift.value.set(MOOD.lift[0] + 0.12 * fl, MOOD.lift[1] + 0.13 * fl, MOOD.lift[2] + 0.18 * fl);
+  renderer.toneMappingExposure = 1.05 * MOOD.exp * (1 + 0.1 * drop) + 0.9 * fl;
+  sun.color.copy(MOOD.sun); sun.intensity = MOOD.sunI;
+  hemi.color.copy(MOOD.sky); hemi.groundColor.copy(MOOD.gnd); hemi.intensity = MOOD.hemiI + 1.5 * fl;
+  if (scene.fog) scene.fog.color.copy(MOOD.fog);
+  const M = G.M;
+  if (M) {
+    const k = kick + 0.7 * drop;
+    M.top.emissiveIntensity = 0.85 + 0.35 * MOOD.night + 1.4 * k + 0.25 * heat;
+    M.neon.color.copy(G.neonBase).multiplyScalar(1 + 1.3 * k + 0.4 * MOOD.night);
+    M.laser.color.copy(G.laserBase).multiplyScalar(1 + 1.2 * kick);
+    for (const c of M.crystal) c.emissiveIntensity = 0.9 + 1.1 * kick;
+    M.hot.emissiveIntensity = 1.6 + 1.4 * kick;
+  }
+  let warn = false;
+  if (live && G.hz && G.p) { const h = G.hz.list.slice(G.hz.from, G.hz.from + 2).find((q) => q.x + q.w > G.p.x); warn = !!h && (h.x - G.p.x) / lv.speed < 2 * lv.spb; }
+  LANE_MARK.gate.opacity = LANE_MARK.hurdle.opacity = warn ? 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(wall * 0.03)) : 0.3;
+  // a small zoom punch on the kick drum and the drops
+  if (G.baseFov) { const f = G.baseFov * (1 - 0.018 * kick - 0.03 * drop); if (Math.abs(camera.fov - f) > 0.01) { camera.fov = f; camera.updateProjectionMatrix(); } }
+}
+
 // ---------- beat rating ----------
 function rateJump(tp) {
   const ct = G.cueT; if (!ct.length) return;
@@ -367,7 +427,7 @@ function nextMove(p, ct) {
   if (p.mode === MODE.WAVE) return ['HOLD / RELEASE', 'ZIG-ZAG'];
   const ct2 = G.cueT; let lo = 0, hi = ct2.length;
   while (lo < hi) { const m = (lo + hi) >> 1; if (ct2[m] < ct + 0.03) lo = m + 1; else hi = m; }
-  if (lo >= ct2.length) return ['STAGE END', ''];
+  if (lo >= ct2.length) return ['KEEP RUNNING', ''];
   const beats = (ct2[lo] - ct) / G.level.spb;
   const h = G.hz && G.hz.list.slice(G.hz.from, G.hz.from + 3).find((q) => q.x + q.w > p.x);
   if (h) {
@@ -424,6 +484,7 @@ function frame(wall, once) {
   grade.uniforms.time.value = (wall % 10000) / 1000;
   const dt = Math.max(0, Math.min(0.1, (wall - G.wall) / 1000 || 0.016)); G.wall = wall;
   const lv = G.level; if (!lv) { composer.render(); return; }
+  if (G.finishReq) { G.finishReq = false; stageClear(); }
   const p = G.p;
   let ct = G.clock.t;
   if (G.attract) {
@@ -456,7 +517,7 @@ function frame(wall, once) {
           for (let i = 0; i < evs.length; i++) {
             const e = evs[i];
             if (e === EV.DEAD) crashed(wall);
-            else if (e === EV.FINISH) stageClear();
+            else if (e === EV.FINISH) G.finishReq = true;
             else if (e === EV.JUMP) { G.L.roll = 0; G.L.rollBuf = 0; if (pressed || p.mode === MODE.CUBE) rateJump(p.t); }
             else if (e === EV.COIN) { G.coins++; G.bonus += 500; i++; G.quizReq = true; }
             else if (e === EV.SECRET) { G.coins++; G.bonus += 1000; i++; }
@@ -479,7 +540,8 @@ function frame(wall, once) {
     hud(p, ct);
   }
   if (G.player) { const pp = G.player.position; sun.position.set(pp.x - 6, pp.y + 14, pp.z + 5); sun.target.position.copy(pp); }
-  sparks.update(dt); flames.update(dt); burst.update(dt);
+  sparks.update(dt); flames.update(dt); burst.update(dt); landRing.update(dt); tiles.update(dt); shards.update(dt);
+  updateLook(G.attract ? G.attractT : G.clock.t, dt, wall);
   FX.fxTime.value = wall / 1000;
   if (G.player) streaks.update(dt, G.player.position, G.playing && !G.paused && !G.attract);
   clouds.update(camera.position, wall / 1000);
@@ -489,7 +551,7 @@ function frame(wall, once) {
 let shake = 0;
 function crashed(wall) {
   G.deaths++; G.lives--; G.streak = 0; G.respawnAt = wall + 800;
-  const pl = G.player.position; sparks.emit(pl.x, pl.y, pl.z, 40, [0xff6a3a, 0xffd36a, 0xffffff], 5);
+  const pl = G.player.position; sparks.emit(pl.x, pl.y, pl.z, 40, [0xff6a3a, 0xffd36a, 0xffffff], 5); shards.burst(pl);
   $('msg').textContent = G.lives > 0 ? 'Crashed' : 'Out of lives'; $('msg').classList.remove('hidden');
   shake = 0.35;
 }
@@ -510,13 +572,18 @@ function applyLaneInput(p) {
 function show(id) { for (const s of ['menu', 'hud', 'pause', 'over']) $(s).classList.toggle('hidden', s !== id && !(id === 'pause' && s === 'hud') && !(id === 'over' && s === 'hud')); }
 
 // end of the song = stage clear: bonus, then the song starts again with the next (harder) stage. Never a "level complete".
+// The end of the song is NOT a stop: it is one continuous level. The song starts again from the top, the next (harder)
+// stretch of road takes over right where the runner is, and the camera, lane, lives and score carry straight on.
+// The colours keep sliding toward night (updateLook). Still a few bonus points for getting this far.
 function stageClear() {
-  G.playing = false; audio.fadeOutMusic && audio.fadeOutMusic(0.8);
+  const oldX = G.p.x, lane = G.L ? G.L.lane : 0;
   G.bonus += 1000 * Math.min(3, G.stage + 1) + G.lives * 500;
   G.distBank += G.p.furthest * 5;
-  banner('STAGE CLEAR', 'Well done, pilgrim', 'NEXT: ' + stageTag(G.stage + 1), 1700);
-  const run = G.runId;
-  setTimeout(() => { if (run === G.runId) loadStage(G.stage + 1); }, 1800);
+  setStage(G.stage + 1, true);
+  G.camPos.z += oldX; G.camLook.z += oldX; // same view, now at the start of the next stretch
+  G.L.lane = G.L.lx = lane;
+  trail.reset(); tiles.clear(); G.lastTile = null;
+  go();
 }
 let bannerT = 0;
 function banner(top, main, sub, ms) {
@@ -561,7 +628,7 @@ function closeQuiz() {
 }
 function gameOver() {
   G.playing = false; audio.fadeOutMusic && audio.fadeOutMusic(0.6);
-  results('Out of lives', 'You reached ' + stageTag().toLowerCase().replace('stage', 'stage') + '. Get up and run again.');
+  results('Out of lives', 'You made it to ' + stageTag() + '. Get up and run again.');
 }
 // best score per song, kept on this device
 const bestOf = (song) => { try { return +localStorage.getItem('faithdash3d.best.' + song) || 0; } catch { return 0; } };
@@ -571,7 +638,7 @@ function results(title, sub) {
   if (saveBest(G.level.song, G.score)) sub = '★ New best score! ★';
   $('o-title').textContent = title; $('o-sub').textContent = sub;
   $('o-score').textContent = pad(G.score); $('o-best').textContent = G.best; $('o-coins').textContent = G.coins;
-  $('o-prog').textContent = G.stage + 1 + ' · ' + STAGE_NAMES[Math.min(2, G.stage)];
+  $('o-prog').textContent = stageTag();
   show('over');
 }
 
@@ -588,22 +655,20 @@ async function start(song) {
   for (const [txt, ms] of [['3', 650], ['2', 650], ['1', 650]]) { if (run !== G.runId) return; $('msg').textContent = txt; await new Promise((r) => setTimeout(r, ms)); }
   if (run !== G.runId) return;
   $('msg').classList.add('hidden');
-  banner(stageTag(), stageDef().name, SONGS[song].toUpperCase(), 1600);
+  banner(COURSE.toUpperCase(), 'From dawn to night', SONGS[song].toUpperCase(), 1600);
   go();
 }
 // the next time round: same song from the top, a harder layout; lives, score and multiplier carry over
-function loadStage(stage) {
-  setStage(stage);
-  banner(stageTag(), stageDef().name + (stage > 2 ? ' · round ' + (stage - 1) : ''), 'THE SONG GOES ROUND AGAIN, FASTER', 1800);
-  go();
-}
-function setStage(stage) {
+function loadStage(stage) { setStage(stage); go(); } // (test hook: jump straight to a difficulty)
+function setStage(stage, keepCam) {
   G.stage = stage;
   const lv = getLevel(stageId(G.song, stage));
   if (!G.level || G.level.id !== lv.id) buildWorld(lv);
-  G.level = lv; G.p = newPlayer(lv); G.prev = null; G.camPos.set(0, 0, 0); G.gk = 0;
+  G.level = lv; G.p = newPlayer(lv); G.prev = null; if (!keepCam) G.camPos.set(0, 0, 0); G.gk = 0; G.bm = getBeatMap(lv.song);
   G.L = LN.newLaneState(); G.laneReq = 0; G.rollReq = false; if (G.hz) G.hz.from = 0; G.wasGrounded = true;
   G.cueT = (lv.cues || []).map((c) => c.t).sort((a, b) => a - b);
+  const next = stageId(G.song, stage + 1), idle = window.requestIdleCallback || ((f) => setTimeout(f, 1500));
+  if (next !== lv.id) idle(() => getLevel(next)); // unpack the next (harder) layout in spare time
   $('h-title').textContent = `${SONGS[G.song] || ''} · ${stageTag()}`.toUpperCase();
 }
 function go() {
@@ -687,7 +752,7 @@ function resize() {
   renderer.setSize(w, h, false); composer.setSize(w, h); bloom.setSize(w * dpr * q.bloom, h * dpr * q.bloom); // Auto: glow at half size
   grade.uniforms.texel.value.set(1 / (w * dpr), 1 / (h * dpr));
   flames.setScale(h * dpr);
-  camera.aspect = w / h; camera.fov = w < h ? 70 : 52; camera.updateProjectionMatrix();
+  camera.aspect = w / h; G.baseFov = camera.fov = w < h ? 70 : 52; camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize); resize();
 

@@ -131,7 +131,9 @@ export function vortexMaterial(color) {
 
 // ---------------------------------------------------------------- perfect-jump light burst
 export class BurstRing {
-  constructor(scene) {
+  // strength = peak opacity, size = how far the ring spreads
+  constructor(scene, strength = 0.9, size = 3.2) {
+    this.strength = strength; this.size = size;
     this.m = new THREE.Mesh(new THREE.RingGeometry(0.7, 0.85, 48), new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false }));
     this.m.rotation.x = -Math.PI / 2; this.m.visible = false; this.t = 1; scene.add(this.m);
   }
@@ -140,7 +142,7 @@ export class BurstRing {
     if (this.t >= 1) return;
     this.t = Math.min(1, this.t + dt / 0.45);
     const e = 1 - Math.pow(1 - this.t, 3);
-    this.m.scale.setScalar(0.4 + e * 3.2); this.m.material.opacity = (1 - this.t) * 0.9;
+    this.m.scale.setScalar(0.4 + e * this.size); this.m.material.opacity = (1 - this.t) * this.strength;
     if (this.t >= 1) this.m.visible = false;
   }
 }

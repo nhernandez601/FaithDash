@@ -164,26 +164,34 @@ function splitLong(o) {
   const e = o.matrixWorld.elements;
   if (Math.abs(e[0] - 1) > 1e-6 || Math.abs(e[5] - 1) > 1e-6 || Math.abs(e[10] - 1) > 1e-6 || e[1] || e[2] || e[4] || e[6] || e[8] || e[9]) return; // only plain (baked) meshes
   if (!g.boundingBox) g.computeBoundingBox();
-  const bz0 = -(g.boundingBox.max.z + e[14]), bz1 = -(g.boundingBox.min.z + e[14]);
-  if (!zones.some((z) => bz1 > z.x0 - 2 && bz0 < z.x1 + 2)) return;
-  const names = Object.keys(g.attributes), A = names.map((n) => g.attributes[n]);
+  const oz = e[14];
+  const hit = (za, zb) => { const d0 = -(Math.max(za, zb) + oz), d1 = -(Math.min(za, zb) + oz); for (const z of zones) if (d1 > z.x0 - 2 && d0 < z.x1 + 2) return true; return false; };
+  if (!hit(g.boundingBox.min.z, g.boundingBox.max.z)) return;
+  // every vertex = all its attributes side by side (stride floats); zAt = where position.z sits in that
+  const names = Object.keys(g.attributes), src = names.map((n) => g.attributes[n].array), size = names.map((n) => g.attributes[n].itemSize);
+  const stride = size.reduce((x, y) => x + y, 0);
+  let zAt = 0; for (let k = 0; k < names.indexOf('position'); k++) zAt += size[k]; zAt += 2;
   const out = names.map(() => []);
-  const inZone = (za, zb) => { const d0 = -(Math.max(za, zb) + e[14]), d1 = -(Math.min(za, zb) + e[14]); return zones.some((z) => d1 > z.x0 - 2 && d0 < z.x1 + 2); };
-  const get = (k, i) => { const a = A[k], r = []; for (let c = 0; c < a.itemSize; c++) r.push(a.array[i * a.itemSize + c]); return r; };
-  const mix = (p, q) => p.map((v, i) => (v + q[i]) / 2);
-  const tri = (v, depth) => { // v = [vertA, vertB, vertC], each = per-attribute arrays
-    const z = v.map((q) => q[0][2]);
+  const vert = (i) => { const v = new Float32Array(stride); let q = 0; for (let k = 0; k < names.length; k++) for (let c = 0; c < size[k]; c++) v[q++] = src[k][i * size[k] + c]; return v; };
+  const emit = (v) => { let q = 0; for (let k = 0; k < names.length; k++) { const o2 = out[k]; for (let c = 0; c < size[k]; c++) o2.push(v[q++]); } };
+  const copy = (i) => { for (let k = 0; k < names.length; k++) { const o2 = out[k], sk = size[k], sr = src[k]; for (let c = 0; c < sk; c++) o2.push(sr[i * sk + c]); } };
+  const tri = (v, depth) => {
     let best = -1, len = SPLIT;
-    for (let i = 0; i < 3; i++) { const d = Math.abs(z[i] - z[(i + 1) % 3]); if (d > len && inZone(z[i], z[(i + 1) % 3])) { len = d; best = i; } }
-    if (best < 0 || depth > 12) { for (const q of v) q.forEach((arr, k) => out[k].push(...arr)); return; }
-    const a = v[best], b = v[(best + 1) % 3], c = v[(best + 2) % 3], m = a.map((arr, k) => mix(arr, b[k]));
-    tri([a, m, c], depth + 1); tri([m, b, c], depth + 1);
+    for (let i = 0; i < 3; i++) { const za = v[i][zAt], zb = v[(i + 1) % 3][zAt], d = Math.abs(za - zb); if (d > len && hit(za, zb)) { len = d; best = i; } }
+    if (best < 0 || depth > 12) { emit(v[0]); emit(v[1]); emit(v[2]); return; }
+    const p = v[best], q = v[(best + 1) % 3], r = v[(best + 2) % 3], m = new Float32Array(stride);
+    for (let c = 0; c < stride; c++) m[c] = (p[c] + q[c]) / 2;
+    tri([p, m, r], depth + 1); tri([m, q, r], depth + 1);
   };
-  const pi = names.indexOf('position');
-  if (pi !== 0) { names.unshift(names.splice(pi, 1)[0]); A.unshift(A.splice(pi, 1)[0]); }
-  for (let t = 0; t < pos.count; t += 3) tri([0, 1, 2].map((j) => names.map((_, k) => get(k, t + j))), 0);
+  const Z = pos.array;
+  for (let t = 0; t < pos.count; t += 3) {
+    const z0 = Z[t * 3 + 2], z1 = Z[t * 3 + 5], z2 = Z[t * 3 + 8];
+    const lo = Math.min(z0, z1, z2), hi = Math.max(z0, z1, z2);
+    if (hi - lo <= SPLIT || !hit(lo, hi)) { copy(t); copy(t + 1); copy(t + 2); continue; } // most triangles: as they are
+    tri([vert(t), vert(t + 1), vert(t + 2)], 0);
+  }
   const ng = new THREE.BufferGeometry();
-  names.forEach((n, k) => ng.setAttribute(n, new THREE.BufferAttribute(new Float32Array(out[k]), A[k].itemSize)));
+  names.forEach((n, k) => ng.setAttribute(n, new THREE.BufferAttribute(new Float32Array(out[k]), size[k])));
   g.dispose(); o.geometry = ng;
 }
 
