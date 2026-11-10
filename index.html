@@ -4,6 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="theme-color" content="#0a0820" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Faith Dash" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
   <title>Faith Dash 3D</title>
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -105,13 +111,14 @@
     .rating.good { color: #cfd6ff; } .rating.off { color: #ff8aa0; font-size: 26px; }
     /* lane / roll controls: arrow buttons (always on touch screens) and a swipe strip that never jumps */
     #pad { position: absolute; left: 0; right: 0; bottom: 0; height: 0; display: flex; justify-content: space-between; align-items: flex-end; padding: 0 16px 16px; pointer-events: none; }
-    #pad button { pointer-events: auto; width: 62px; height: 62px; border-radius: 50%; border: 1px solid rgba(159,245,210,.45); background: rgba(10,8,32,.45); color: var(--mint); font-size: 22px; backdrop-filter: blur(6px); display: none; }
-    #pad button:active { background: rgba(159,245,210,.3); }
-    #pad .grp { display: flex; gap: 12px; }
+    #pad button { pointer-events: auto; width: 66px; height: 66px; border-radius: 50%; border: 1.5px solid rgba(159,245,210,.32); background: rgba(10,8,32,.18); color: rgba(159,245,210,.8); font-size: 22px; display: none; opacity: .72; -webkit-tap-highlight-color: transparent; }
+    #pad button:active, #pad button.on { background: rgba(159,245,210,.22); opacity: 1; }
+    #pad button[data-k="J"] { width: 78px; height: 78px; font-size: 26px; border-color: rgba(255,217,138,.4); color: rgba(255,217,138,.9); }
+    #pad .grp { display: flex; gap: 14px; align-items: flex-end; }
     @media (pointer: coarse) {
-      #pad { height: 28vh; pointer-events: auto; background: linear-gradient(rgba(0,0,0,0), rgba(6,4,20,.35)); }
       #pad button { display: block; }
-      .next { bottom: calc(28vh + 6px) !important; }
+      .next { bottom: max(14px, env(safe-area-inset-bottom)); }
+      .next small { display: none; } #h-move { font-size: 22px; } #h-when { font-size: 9px; }
       .hint, .keys { display: none; } /* keyboard hints mean nothing on a touch screen */
     }
     /* skins screen: back button + title at the top, the hero turning in the middle, swatches + EQUIP at the bottom */
@@ -147,6 +154,25 @@
     .grid3 b { display: block; font-size: 22px; color: #fff; font-family: 'Barlow Condensed', sans-serif; letter-spacing: 0; }
     .btn { background: var(--mint); color: #0b2a22; border: 0; border-radius: 10px; padding: 13px; font-weight: 700; letter-spacing: .08em; font-size: 13px; }
     .btn.alt { background: rgba(255,255,255,.08); color: #fff; border: 1px solid var(--line); }
+    /* coin-gate question */
+    #quiz .card { max-width: min(560px, calc(100vw - 32px)); padding: 20px 22px; gap: 10px; }
+    #quiz .qtext { font-size: 18px; font-weight: 700; line-height: 1.35; text-align: left; }
+    #quiz .qref { font-size: 10px; letter-spacing: .18em; color: var(--dim); text-align: left; }
+    #qchoices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    #qchoices button { text-align: left; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.07); font-weight: 600; font-size: 14px; line-height: 1.25; }
+    #qchoices button i { font-style: normal; color: var(--gold); margin-right: 8px; font-weight: 700; }
+    #qchoices button.right { background: rgba(96,230,160,.3); border-color: #6fe6a6; }
+    #qchoices button.wrong { background: rgba(255,90,110,.3); border-color: #ff6a80; }
+    #qresult { min-height: 20px; font-weight: 700; letter-spacing: .06em; }
+    #qresult.good { color: #8ff0bf; } #qresult.bad { color: #ffb0bc; }
+    @media (max-height: 500px) { #quiz .card { padding: 12px 16px; gap: 6px; } #quiz .qtext { font-size: 15px; } #qchoices button { padding: 8px 10px; font-size: 13px; } }
+    #banner { position: fixed; left: 0; right: 0; top: 30%; z-index: 7; text-align: center; pointer-events: none; text-shadow: 0 4px 30px rgba(0,0,0,.7); }
+    #banner small { display: block; font-size: 12px; letter-spacing: .3em; color: var(--mint); font-weight: 700; }
+    #banner b { display: block; font-family: 'Barlow Condensed', sans-serif; font-size: 52px; letter-spacing: .06em; color: var(--gold); }
+    #banner span { font-size: 13px; letter-spacing: .2em; color: #fff; }
+    /* iPhone tip: Safari can't go full screen from a page; the Home Screen app can */
+    #iostip { position: absolute; left: 50%; top: max(64px, calc(env(safe-area-inset-top) + 54px)); transform: translateX(-50%); width: min(420px, calc(100vw - 32px)); padding: 10px 14px; border-radius: 14px; background: rgba(16,12,44,.88); border: 1px solid var(--line); font-size: 12px; line-height: 1.5; text-align: center; z-index: 3; }
+    #iostip button { margin-left: 8px; background: none; border: 0; color: var(--mint); font-weight: 700; }
 
     @media (max-width: 720px) {
       .stats { gap: 14px; } .stat b { font-size: 22px; } #h-mult { font-size: 22px; }
@@ -168,6 +194,7 @@
   </div>
 
   <div id="menu">
+    <div id="iostip" class="hidden">For full screen on iPhone: tap <b>Share</b> then <b>Add to Home Screen</b>, and play from the new icon.<button id="iosok">OK</button></div>
     <div class="mtop">
       <div class="pill"><i>★</i><div><small>BEST</small><b id="mbest">00000</b></div></div>
       <button class="icon" id="settingsbtn" aria-label="Settings">⚙</button>
@@ -202,7 +229,7 @@
     <div class="lab">PICTURE QUALITY</div>
     <div class="seg" id="qseg"><button data-q="auto">Auto</button><button data-q="high">High</button><button data-q="ultra">Ultra 4K</button></div>
     <div class="lab">HOW TO PLAY</div>
-    <p class="help">Tap or Space: jump (hold to fly). Swipe or ← →: change lane. Swipe down or ↓: roll. Keep the beat to raise your multiplier.</p>
+    <p class="help">One run, three stages: the song repeats and gets harder each time (Easy, Medium, then Hard). Coin gates ask a question: a right answer gives back a life (up to 3), raises your multiplier and adds points; a wrong answer costs nothing. The run ends when you are out of lives.<br>Phone: ◀ ▶ change lane, ▲ jump (hold to fly), ▼ roll; you can also swipe. Keyboard: Space jump, ← → lanes, ↓ roll, 1-4 answer.</p>
     <button class="btn alt" id="introbtn">🎬 Watch intro</button>
     <button class="btn" id="settingsclose">DONE</button>
   </div></div>
@@ -224,9 +251,18 @@
     <div id="rating" class="rating"></div>
     <div class="next"><small>NEXT MOVE</small><b id="h-move">JUMP ↑</b><span id="h-when"></span></div>
     <div class="hint">SPACE JUMP · ← → CHANGE LANE · ↓ ROLL · HOLD TO FLY · P PAUSE</div>
-    <div id="pad"><div class="grp"><button data-k="L" aria-label="Left lane">◀</button><button data-k="R" aria-label="Right lane">▶</button></div><button data-k="D" aria-label="Roll">▼</button></div>
+    <div id="pad"><div class="grp"><button data-k="L" aria-label="Left lane">◀</button><button data-k="R" aria-label="Right lane">▶</button></div><div class="grp"><button data-k="D" aria-label="Roll">▼</button><button data-k="J" aria-label="Jump (hold to fly)">▲</button></div></div>
   </div>
   <div id="msg" class="hidden"></div>
+  <div id="banner" class="hidden"><small id="b-top"></small><b id="b-main"></b><span id="b-sub"></span></div>
+
+  <div id="quiz" class="modal hidden"><div class="card">
+    <div class="eyebrow">COIN GATE · ANSWER TO EARN A LIFE</div>
+    <div class="qtext" id="qtext"></div>
+    <div class="qref" id="qref"></div>
+    <div id="qchoices"></div>
+    <div id="qresult"></div>
+  </div></div>
 
   <div id="pause" class="modal hidden"><div class="card">
     <h2>Paused</h2>
@@ -240,7 +276,7 @@
     <h2 id="o-title"></h2>
     <div class="eyebrow" id="o-sub" style="color:var(--dim)"></div>
     <div class="big" id="o-score">00000</div>
-    <div class="grid3"><div>PROGRESS<b id="o-prog"></b></div><div>BEST STREAK<b id="o-best"></b></div><div>COINS<b id="o-coins"></b></div></div>
+    <div class="grid3"><div>STAGE<b id="o-prog"></b></div><div>BEST STREAK<b id="o-best"></b></div><div>COINS<b id="o-coins"></b></div></div>
     <button class="btn" id="again">PLAY AGAIN</button>
     <button class="btn alt" id="menubtn">MAIN MENU</button>
   </div></div>

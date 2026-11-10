@@ -9,7 +9,8 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { getLevel, LEVEL_DEFS } from '../game/levelgen.js';
+import { getLevel, LEVEL_DEFS, SONG_IDS, stageId } from '../game/levelgen.js';
+import { triviaDeck } from './trivia.js';
 import { newPlayer, step, respawn, platPos, sawPos, spinnerAngle, pulseOn, DT, EV, MODE, PW, PH } from '../game/sim.js';
 import { SmoothClock } from '../game/clock.js';
 import { audio } from '../audio/audio.js';
@@ -17,14 +18,16 @@ import { SONG_URLS } from '../audio/songs.js';
 import * as A from './art3d.js';
 import * as LN from './lanes.js';
 import * as FX from './fx3d.js';
+import * as BD from './bend.js';
 const LANE_W = A.TRACK_W / 3; // world width of one lane
 import logoUrl from '../assets/logo.webp';
 
 audio.setSongUrls(SONG_URLS);
 
 const SONGS = { drop: 'Arcade Drop', boss: 'Arcade Boss Battle', intense: 'Intense Section' };
-// ONE course: "The Pilgrim's Path", with one look. The player only picks the song; the obstacles follow that song's beat
-// (each song has its own proven layout, so it is always beatable and always on the music).
+// ONE course: "The Pilgrim's Path", with one look. The player only picks the song. One run = the song on repeat, and each
+// time round is a harder stage (Easy -> Medium -> Hard, then Hard again) until the player is out of lives. Every stage is
+// its own proven layout on that song's beat, so it is always beatable and always on the music.
 const COURSE = "The Pilgrim's Path";
 const $ = (id) => document.getElementById(id);
 const canvas = $('c');
@@ -104,6 +107,7 @@ const burst = new FX.BurstRing(scene);                      // light ring on PER
 const streaks = new FX.SpeedLines(scene, MOBILE ? 16 : 36);  // faint light streaks rushing past
 const clouds = new FX.CloudLayer(scene);                    // drifting cloud sheets under the road
 const aurora = A.makeAurora(); scene.add(aurora);
+for (const m of [sparks.pts.material, flames.mat, burst.m.material]) BD.patchMaterial(m); // particles follow the twisting road
 // far-away islands fade into the same colour as the painted clouds
 A.setSkyColorHook((col, img) => {
   if (scene.fog) scene.fog.color.copy(col).lerp(new THREE.Color(0x3a2f7a), 0.35);
@@ -125,8 +129,12 @@ const LIVES = 3;
 const G = {
   level: null, p: null, prev: null, root: null, dyn: [], floaters: [], clock: new SmoothClock(), playing: false, paused: false, ended: false,
   wall: 0, press: false, hold: false, cam: 'chase', camPos: new THREE.Vector3(), camLook: new THREE.Vector3(), deaths: 0, respawnAt: 0,
-  lives: LIVES, score: 0, bonus: 0, streak: 0, best: 0, coins: 0, cueT: [], wasGrounded: true, squash: 0, sel: 1, attract: true, attractT: 0,
+  lives: LIVES, score: 0, bonus: 0, streak: 0, best: 0, coins: 0, cueT: [], wasGrounded: true, squash: 0, sel: 'drop', attract: true, attractT: 0,
+  stage: 0, distBank: 0, quiz: false, gk: 0,
 };
+const STAGE_NAMES = ['EASY', 'MEDIUM', 'HARD'];
+const stageDef = () => LEVEL_DEFS.find((d) => d.id === G.level.id);
+const stageTag = (s = G.stage) => `STAGE ${s + 1} · ${STAGE_NAMES[Math.min(2, s)]}`;
 const wz = (x) => -x; // sim x -> world z
 
 function disposeRoot() {
@@ -146,7 +154,11 @@ function buildWorld(lv) {
   const add = (m) => { root.add(m); return m; };
   G.sky = A.makeSky(th); scene.background = G.sky;
   A.buildTrack(lv, root, M);
-  G.floaters = A.buildScenery(lv, root, th);
+  // twisting / spiral stretches (drawing only, see bend.js); the scenery is kept apart so it does not bend
+  BD.setZones(BD.planBends(lv, (LEVEL_DEFS.find((d) => d.id === lv.id) || {}).tier));
+  const scen = new THREE.Group(); root.add(scen);
+  G.floaters = A.buildScenery(lv, scen, th);
+  const sceneryMats = new Set(); scen.traverse((o) => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => sceneryMats.add(m)); });
   G.gears = A.buildLandmarks(lv, root, M);
   // rhythm obstacles get 1-2 lanes each (dodge or jump); the sim steps against a per-lane copy of the level (lanes.js)
   G.hzLanes = LN.assignHazardLanes(lv); G.lvLanes = LN.laneLevels(lv, G.hzLanes);
@@ -175,15 +187,22 @@ function buildWorld(lv) {
   for (const h of G.hz.list) {
     const g = add(h.type === 'gate' ? A.makeGate(M, h.lanes, LANE_W, LN.GATE_Y) : A.makeHurdle(M, h.lanes, LANE_W));
     g.position.set(0, h.y, wz(h.x + h.w / 2));
+    for (const ln of h.lanes) {
+      const len = 4.5, m = new THREE.Mesh(new THREE.PlaneGeometry(LANE_W * 0.94, len), h.type === 'gate' ? LANE_MARK.gate : LANE_MARK.hurdle);
+      m.rotation.x = -Math.PI / 2; m.position.set(ln * LANE_W, h.y + 0.025, wz(h.x - len / 2 + h.w)); add(m);
+    }
   }
   G.player = add(A.makeHero(PW, PH)); G.player.userData.dyn = true;
   G.mark = add(A.makeFloorMark()); G.mark.userData.dyn = true;
   for (const d of G.dyn) d.g.userData.dyn = true;
   A.bakeStatic(root); // merge everything that never moves into a few big meshes (far fewer draw calls)
+  BD.patchTree(root, sceneryMats);
   // the ground heights, for the shadow under the hero
   G.tops = lv.solids.filter((s) => s.y1 > s.y0).map((s) => [s.x, s.x + s.w, s.y1]);
 }
 
+const laneMark = (c) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+const LANE_MARK = { gate: laneMark(0xff3048), hurdle: laneMark(0xffb020) };
 // world x of each lane an obstacle is in (a full-width obstacle is drawn once, in the middle)
 const laneXs = (lanes) => (lanes ? lanes.map((l) => l * LANE_W) : [0]);
 
@@ -262,9 +281,10 @@ function updateDynamic(t, wall) {
   if (G.gears) G.gears.forEach((g, i) => { g.rotation.z = wall * 0.0008 * (i % 2 ? -1.6 : 1); });
 }
 
-// 3/4 view: the chase camera sits CHASE_ANGLE degrees off to the right of the track, CHASE_DIST back
-const CHASE_ANGLE = 74;
-const CHASE_DIST = 8.6;
+// 3/4 view: the chase camera sits CHASE_ANGLE degrees off to the right of the track, CHASE_DIST back, looking well ahead
+const CHASE_ANGLE = 52;
+const CHASE_DIST = 10.5;
+const BEND_P = new THREE.Vector3(), BEND_L = new THREE.Vector3();
 function updateCamera(v, dt) {
   const z = wz(v.x), y = v.y;
   // the camera follows height slowly, so jumps don't bob the whole screen
@@ -282,14 +302,28 @@ function updateCamera(v, dt) {
   } else if (G.cam === 'chase') {
     const a = CHASE_ANGLE * Math.PI / 180;
     const lx = G.L ? G.L.lx * LANE_W * 0.7 : 0;
-    // far, a little high and well to the side, so a long stretch of road runs across the screen
-    want.set(lx + Math.sin(a) * CHASE_DIST, G.camY + 3.6, z + Math.cos(a) * CHASE_DIST); look.set(lx * 0.6 - 0.8, G.camY + 0.7, z - 5.5);
+    // gravity mode: glide down below the runner and look up, so the ceiling it runs on (and what hangs there) is in view
+    G.gk += ((G.p && G.p.grav < 0 && !G.p.dead ? 1 : 0) - G.gk) * (1 - Math.exp(-dt * 3));
+    const up = G.camY + 4.4, under = y - 2.6;
+    // behind and to the side, a little high, aimed far down the road so what comes next is on screen early
+    want.set(lx + Math.sin(a) * CHASE_DIST, up + (under - up) * G.gk, z + Math.cos(a) * CHASE_DIST);
+    look.set(lx * 0.6 - 0.6 - 0.8 * G.gk, G.camY + 0.6 + (y + 0.9 - G.camY - 0.6) * G.gk, z - 13 + 4.5 * G.gk);
   } else if (G.cam === 'close') { want.set(1.7, y + 1.2, z + 1.9); look.set(0, y + 0.45, z - 0.4); } // close-up of the hero (debug / showcase)
   else { want.set(5.5, y * 0.7 + 5.2, z + 7.5); look.set(-0.5, y + 0.8, z - 6); }
   const k = G.camPos.lengthSq() === 0 ? 1 : 1 - Math.exp(-dt * 6); // glide between camera styles; the music clock is not affected
   G.camPos.lerp(want, k); G.camLook.lerp(look, k);
-  camera.position.copy(G.camPos);
-  camera.lookAt(G.camLook);
+  // on a twist / spiral the camera rides the bent road and rolls with it (most of the way), so the world spins around you
+  const cp = BEND_P.copy(G.camPos), cl = BEND_L.copy(G.camLook);
+  let roll = 0;
+  if (G.cam === 'chase' && !G.attract && !G.showcase) {
+    // the whole camera rig turns around the road's axis with the runner (fully on a spiral, 3/4 on a twist): the hero keeps its place on screen,
+    // the road ahead visibly twists, and the sky and islands swing round
+    const bd = BD.angleAt(v.x + PW / 2); roll = bd.a * (bd.z && bd.z.kind === BD.SPIRAL ? 1 : 0.75);
+    if (roll) for (const q of [cp, cl]) { const c = Math.cos(roll), sn = Math.sin(roll), yy = q.y - bd.py; const xx = q.x * c - yy * sn; q.y = q.x * sn + yy * c + bd.py; q.x = xx; }
+  }
+  camera.up.set(-Math.sin(roll), Math.cos(roll), 0);
+  camera.position.copy(cp);
+  camera.lookAt(cl);
   if (G.sky) A.fitSky(G.sky, camera.aspect, (camera.position.z * 0.00004) % 1 + 0.04 * Math.sin(G.attractT * 0.1), Math.max(-1, Math.min(1, (camera.position.y - 5) * 0.03)));
 }
 
@@ -326,15 +360,14 @@ function sectionLabel(p, ct) {
   if (p.mode === MODE.SHIP) return ['TAKE FLIGHT', 'Hold to rise, let go to fall'];
   if (p.mode === MODE.WAVE) return ['RIDE THE WAVE', 'Hold to climb, let go to dive'];
   if (p.grav < 0) return ['UPSIDE DOWN', 'Trust the path'];
-  if (ct < 8) return ['INTRO', 'Forward in faith'];
-  return ['RUN', 'Keep the beat'];
+  return [stageTag(), (stageDef() ? stageDef().name : '') + (G.stage > 2 ? ' · round ' + (G.stage - 1) : '')];
 }
 function nextMove(p, ct) {
   if (p.mode === MODE.SHIP) return ['HOLD ↑', 'TO FLY'];
   if (p.mode === MODE.WAVE) return ['HOLD / RELEASE', 'ZIG-ZAG'];
   const ct2 = G.cueT; let lo = 0, hi = ct2.length;
   while (lo < hi) { const m = (lo + hi) >> 1; if (ct2[m] < ct + 0.03) lo = m + 1; else hi = m; }
-  if (lo >= ct2.length) return ['FINISH', ''];
+  if (lo >= ct2.length) return ['STAGE END', ''];
   const beats = (ct2[lo] - ct) / G.level.spb;
   const h = G.hz && G.hz.list.slice(G.hz.from, G.hz.from + 3).find((q) => q.x + q.w > p.x);
   if (h) {
@@ -349,9 +382,10 @@ function nextMove(p, ct) {
 const pad = (n) => String(Math.floor(n)).padStart(5, '0');
 function hud(p, ct) {
   const lv = G.level;
-  G.score = Math.floor(p.furthest * 5 + G.bonus);
+  G.score = Math.floor(G.distBank + p.furthest * 5 + G.bonus);
   const [sec, sub] = sectionLabel(p, ct);
-  $('h-sec').textContent = sec; $('h-flavor').textContent = sub.toUpperCase();
+  const bz = BD.getZones().find((z) => p.furthest < z.x1 && p.furthest > z.x0 - 3 * lv.speed);
+  $('h-sec').textContent = sec; $('h-flavor').textContent = bz ? (bz.kind === BD.SPIRAL ? '🌀 SPIRAL!' : '〰 TWIST!') : sub.toUpperCase();
   $('h-prog').style.width = Math.min(100, (p.furthest / lv.finishX) * 100) + '%';
   $('h-coins').textContent = G.coins;
   $('h-lives').innerHTML = `${G.lives} / ${LIVES} <b>♥</b>`;
@@ -380,15 +414,15 @@ function autoQuality(ms, wall) {
 
 // ---------- main loop ----------
 let lastDraw = 0;
-function frame(wall) {
-  requestAnimationFrame(frame);
+function frame(wall, once) {
+  if (!once) requestAnimationFrame(frame);
   // phones: cap at 60 fps (120 Hz screens would otherwise double the work and drain the battery)
   if (MOBILE && wall - lastDraw < 15) return;
   lastDraw = wall;
   renderer.info.reset();
   autoQuality(wall - G.wall, wall);
   grade.uniforms.time.value = (wall % 10000) / 1000;
-  const dt = Math.min(0.1, (wall - G.wall) / 1000 || 0.016); G.wall = wall;
+  const dt = Math.max(0, Math.min(0.1, (wall - G.wall) / 1000 || 0.016)); G.wall = wall;
   const lv = G.level; if (!lv) { composer.render(); return; }
   const p = G.p;
   let ct = G.clock.t;
@@ -422,22 +456,25 @@ function frame(wall) {
           for (let i = 0; i < evs.length; i++) {
             const e = evs[i];
             if (e === EV.DEAD) crashed(wall);
-            else if (e === EV.FINISH) finish();
+            else if (e === EV.FINISH) stageClear();
             else if (e === EV.JUMP) { G.L.roll = 0; G.L.rollBuf = 0; if (pressed || p.mode === MODE.CUBE) rateJump(p.t); }
-            else if (e === EV.COIN) { G.coins++; G.bonus += 500; i++; }
+            else if (e === EV.COIN) { G.coins++; G.bonus += 500; i++; G.quizReq = true; }
             else if (e === EV.SECRET) { G.coins++; G.bonus += 1000; i++; }
             else if (e === EV.CHECKPOINT || e === EV.PORTAL || e === EV.ORB || e === EV.MODE) i++;
           }
           LN.stepLane(G.L, DT, p.grounded, p.mode === MODE.CUBE && p.grav > 0);
           if (!p.dead && !p.finished && LN.hitsLaneHazard(G.hz, p, G.L, PW, PH, LANE_W)) { p.dead = true; p.deathReason = 'lane'; crashed(wall); }
-          if (p.dead || p.finished) break;
+          if (p.dead || p.finished || G.quizReq) break;
         }
+        if (G.quizReq && !p.dead) openQuiz();
+        G.quizReq = false;
       }
     }
     const v = { x: p.x, y: p.y, rot: p.rot };
     const q = G.prev;
     if (q && !p.dead && p.t > q.t) { const a = Math.max(0, Math.min(1, (ct - q.t) / (p.t - q.t))); v.x = q.x + (p.x - q.x) * a; v.y = q.y + (p.y - q.y) * a; v.rot = q.rot + (p.rot - q.rot) * a; }
     updatePlayer(v, p, dt); updateDynamic(ct, wall); updateCamera(v, dt);
+    if (G.player) BD.patchLive(G.player); // the hero follows twists / spirals (its Blender model can load late)
     if (shake > 0) { shake = Math.max(0, shake - dt); camera.position.x += (Math.random() - 0.5) * shake; camera.position.y += (Math.random() - 0.5) * shake; }
     hud(p, ct);
   }
@@ -472,14 +509,59 @@ function applyLaneInput(p) {
 // ---------- screens ----------
 function show(id) { for (const s of ['menu', 'hud', 'pause', 'over']) $(s).classList.toggle('hidden', s !== id && !(id === 'pause' && s === 'hud') && !(id === 'over' && s === 'hud')); }
 
-function finish() {
-  G.ended = true; audio.fadeOutMusic && audio.fadeOutMusic(1);
-  G.bonus += G.lives * 1000;
-  setTimeout(() => results('Level complete!', 'Well done, pilgrim.'), 1200);
+// end of the song = stage clear: bonus, then the song starts again with the next (harder) stage. Never a "level complete".
+function stageClear() {
+  G.playing = false; audio.fadeOutMusic && audio.fadeOutMusic(0.8);
+  G.bonus += 1000 * Math.min(3, G.stage + 1) + G.lives * 500;
+  G.distBank += G.p.furthest * 5;
+  banner('STAGE CLEAR', 'Well done, pilgrim', 'NEXT: ' + stageTag(G.stage + 1), 1700);
+  const run = G.runId;
+  setTimeout(() => { if (run === G.runId) loadStage(G.stage + 1); }, 1800);
+}
+let bannerT = 0;
+function banner(top, main, sub, ms) {
+  $('b-top').textContent = top; $('b-main').textContent = main; $('b-sub').textContent = sub; $('banner').classList.remove('hidden');
+  clearTimeout(bannerT); bannerT = setTimeout(() => $('banner').classList.add('hidden'), ms);
+}
+
+// ---------- coin gates: a question from the trivia deck ----------
+// right: +1 life (up to 3), multiplier up (+0.5) and bonus points. wrong: nothing lost, the run goes on.
+const deal = triviaDeck();
+let quizQ = null, quizDone = false;
+function openQuiz() {
+  G.quiz = true; G.paused = true; quizDone = false; audio.suspend();
+  quizQ = deal();
+  $('qtext').textContent = quizQ.q; $('qref').textContent = quizQ.ref.toUpperCase();
+  $('qresult').textContent = ''; $('qresult').className = '';
+  const box = $('qchoices'); box.innerHTML = '';
+  quizQ.choices.forEach((c, i) => {
+    const b = document.createElement('button'); b.innerHTML = `<i>${i + 1}</i>`; b.appendChild(document.createTextNode(c));
+    b.onclick = () => answer(i); box.appendChild(b);
+  });
+  $('quiz').classList.remove('hidden');
+}
+function answer(i) {
+  if (!G.quiz || quizDone) return;
+  quizDone = true;
+  const btns = [...$('qchoices').children], ok = i === quizQ.answer;
+  btns[quizQ.answer].classList.add('right'); if (!ok) btns[i].classList.add('wrong');
+  if (ok) {
+    const had = G.lives; G.lives = Math.min(LIVES, G.lives + 1);
+    G.streak += MULT_STEP * 2; G.best = Math.max(G.best, G.streak);
+    const pts = Math.round(1000 * mult()); G.bonus += pts;
+    $('qresult').textContent = `Correct! ${G.lives > had ? '+1 life · ' : ''}multiplier ×${mult().toFixed(2)} · +${pts}`; $('qresult').className = 'good';
+    if (audio.sfx) audio.sfx('perfect');
+  } else { $('qresult').textContent = 'Not quite. Keep going!'; $('qresult').className = 'bad'; }
+  setTimeout(closeQuiz, ok ? 1300 : 2200);
+}
+function closeQuiz() {
+  $('quiz').classList.add('hidden');
+  if (!G.quiz) return;
+  G.quiz = false; G.paused = false; audio.wake(); G.wall = performance.now();
 }
 function gameOver() {
   G.playing = false; audio.fadeOutMusic && audio.fadeOutMusic(0.6);
-  results('Out of lives', 'Get up and run again.');
+  results('Out of lives', 'You reached ' + stageTag().toLowerCase().replace('stage', 'stage') + '. Get up and run again.');
 }
 // best score per song, kept on this device
 const bestOf = (song) => { try { return +localStorage.getItem('faithdash3d.best.' + song) || 0; } catch { return 0; } };
@@ -489,52 +571,71 @@ function results(title, sub) {
   if (saveBest(G.level.song, G.score)) sub = '★ New best score! ★';
   $('o-title').textContent = title; $('o-sub').textContent = sub;
   $('o-score').textContent = pad(G.score); $('o-best').textContent = G.best; $('o-coins').textContent = G.coins;
-  $('o-prog').textContent = Math.min(100, Math.round((G.p.furthest / G.level.finishX) * 100)) + '%';
+  $('o-prog').textContent = G.stage + 1 + ' · ' + STAGE_NAMES[Math.min(2, G.stage)];
   show('over');
 }
 
-async function start(id) {
-  const lv = getLevel(id);
-  if (!G.level || G.level.id !== lv.id) buildWorld(lv);
-  G.level = lv; G.p = newPlayer(lv); G.prev = null; G.deaths = 0; G.ended = false; G.paused = false; G.camPos.set(0, 0, 0);
-  G.L = LN.newLaneState(); G.laneReq = 0; G.rollReq = false; if (G.hz) G.hz.from = 0;
-  G.lives = LIVES; G.score = 0; G.bonus = 0; G.streak = 0; G.best = 0; G.coins = 0; G.wasGrounded = true; G.attract = false;
-  G.cueT = (lv.cues || []).map((c) => c.t).sort((a, b) => a - b);
-  $('h-title').textContent = `${COURSE} / ${SONGS[lv.song] || ''}`.toUpperCase();
+// a new run on the chosen song: stage 1 (easy), full lives, score from zero
+async function start(song) {
+  G.runId = (G.runId || 0) + 1; const run = G.runId;
+  G.song = song; G.stage = 0; G.deaths = 0; G.ended = false; G.paused = false; G.quiz = false; $('quiz').classList.add('hidden');
+  G.lives = LIVES; G.score = 0; G.bonus = 0; G.distBank = 0; G.streak = 0; G.best = 0; G.coins = 0; G.attract = false;
+  setStage(0);
   show('hud');
   $('msg').textContent = 'Loading song...'; $('msg').classList.remove('hidden');
   audio.unlock();
-  let ok = false;
-  try { ok = await audio.loadSong(lv.song); } catch { ok = false; }
-  for (const [txt, ms] of [['3', 650], ['2', 650], ['1', 650]]) { $('msg').textContent = txt; await new Promise((r) => setTimeout(r, ms)); }
+  try { G.songOk = await audio.loadSong(song); } catch { G.songOk = false; }
+  for (const [txt, ms] of [['3', 650], ['2', 650], ['1', 650]]) { if (run !== G.runId) return; $('msg').textContent = txt; await new Promise((r) => setTimeout(r, ms)); }
+  if (run !== G.runId) return;
   $('msg').classList.add('hidden');
-  if (ok && audio.startSong(lv.song, 0, lv.cues)) { G.clock.reset(audio.songTime()); } else G.clock.reset(0);
-  G.playing = true;
+  banner(stageTag(), stageDef().name, SONGS[song].toUpperCase(), 1600);
+  go();
+}
+// the next time round: same song from the top, a harder layout; lives, score and multiplier carry over
+function loadStage(stage) {
+  setStage(stage);
+  banner(stageTag(), stageDef().name + (stage > 2 ? ' · round ' + (stage - 1) : ''), 'THE SONG GOES ROUND AGAIN, FASTER', 1800);
+  go();
+}
+function setStage(stage) {
+  G.stage = stage;
+  const lv = getLevel(stageId(G.song, stage));
+  if (!G.level || G.level.id !== lv.id) buildWorld(lv);
+  G.level = lv; G.p = newPlayer(lv); G.prev = null; G.camPos.set(0, 0, 0); G.gk = 0;
+  G.L = LN.newLaneState(); G.laneReq = 0; G.rollReq = false; if (G.hz) G.hz.from = 0; G.wasGrounded = true;
+  G.cueT = (lv.cues || []).map((c) => c.t).sort((a, b) => a - b);
+  $('h-title').textContent = `${SONGS[G.song] || ''} · ${stageTag()}`.toUpperCase();
+}
+function go() {
+  const lv = G.level;
+  if (G.songOk && audio.startSong(lv.song, 0, lv.cues)) G.clock.reset(audio.songTime()); else G.clock.reset(0);
+  G.wall = performance.now(); G.playing = true;
 }
 
 function pause(on) {
-  if (!G.playing || G.ended) return;
+  if (!G.playing || G.ended || G.quiz) return;
   G.paused = on;
   if (on) audio.suspend(); else { audio.wake(); G.wall = performance.now(); }
   show(on ? 'pause' : 'hud');
 }
 function toMenu() {
   audio.wake(); audio.stopMusic && audio.stopMusic();
+  G.runId = (G.runId || 0) + 1; G.quiz = false; $('quiz').classList.add('hidden'); $('banner').classList.add('hidden');
   G.playing = false; G.paused = false; G.attract = true; G.camPos.set(0, 0, 0);
   previewLevel(G.sel);
   show('menu');
 }
-function previewLevel(id) {
-  G.sel = id;
-  const lv = getLevel(id);
+// the menu shows the chosen song's first (easy) stage behind the hero
+function previewLevel(song) {
+  G.sel = song; G.song = song; G.stage = 0;
+  const id = stageId(song, 0), lv = getLevel(id);
   if (!G.level || G.level.id !== id) buildWorld(lv);
   G.level = lv; G.p = newPlayer(lv); G.prev = null; G.L = LN.newLaneState();
-  const d = LEVEL_DEFS.find((q) => q.id === id);
-  $('sname').textContent = SONGS[d.song];
-  $('smeta').textContent = `${Math.round(d.bpm)} BPM · ${d.difficulty}`.toUpperCase();
-  $('sbest').textContent = pad(bestOf(d.song));
-  $('mbest').textContent = pad(Math.max(...LEVEL_DEFS.map((q) => bestOf(q.song))));
-  [...$('sdots').children].forEach((el, i) => el.classList.toggle('on', LEVEL_DEFS[i].id === id));
+  $('sname').textContent = SONGS[song];
+  $('smeta').textContent = `${Math.round(lv.bpm || LEVEL_DEFS.find((d) => d.id === id).bpm)} BPM · EASY → HARD`;
+  $('sbest').textContent = pad(bestOf(song));
+  $('mbest').textContent = pad(Math.max(...SONG_IDS.map((s) => bestOf(s))));
+  [...$('sdots').children].forEach((el, i) => el.classList.toggle('on', SONG_IDS[i] === song));
 }
 
 // ---------- input: same everywhere, never depends on the camera ----------
@@ -543,12 +644,14 @@ const lane = (d) => { if (G.playing && !G.paused) G.laneReq = d; };
 const roll = () => { if (G.playing && !G.paused) G.rollReq = true; };
 const up = () => { G.hold = false; };
 window.addEventListener('keydown', (e) => {
+  if (G.quiz && !/^Digit/.test(e.code)) return; // answering a question: the game keys wait
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); if (!e.repeat) down(); }
   else if ((e.code === 'ArrowLeft' || e.code === 'KeyA') && !e.repeat) { e.preventDefault(); lane(-1); }
   else if ((e.code === 'ArrowRight' || e.code === 'KeyD') && !e.repeat) { e.preventDefault(); lane(1); }
   else if ((e.code === 'ArrowDown' || e.code === 'KeyS') && !e.repeat) { e.preventDefault(); roll(); }
   else if (e.code === 'KeyC' && !e.repeat) G.cam = G.cam === 'chase' ? 'drone' : 'chase';
   else if ((e.code === 'Escape' || e.code === 'KeyP') && !e.repeat) pause(!G.paused);
+  else if (G.quiz && /^Digit[1-4]$/.test(e.code)) { const i = +e.code.slice(5) - 1; if (quizQ && i < quizQ.choices.length) answer(i); }
 });
 window.addEventListener('keyup', (e) => { if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') up(); });
 // Touch: a tap on the screen jumps at once (timing matters). A swipe left / right / down changes lane or rolls.
@@ -563,8 +666,9 @@ function swipeMove(e) {
   sw.done = true;
   if (Math.abs(dx) > Math.abs(dy)) lane(dx < 0 ? -1 : 1); else if (dy > 0) roll();
 }
-canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); swipeStart(e); down(); });
-$('hud').addEventListener('pointerdown', (e) => { if (e.target.closest('button') || e.target.closest('#pad')) return; e.preventDefault(); swipeStart(e); down(); });
+const tapJumps = (e) => e.pointerType === 'mouse' || !MOBILE; // touch: jump with the ▲ button, so a swipe never jumps by mistake
+canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); swipeStart(e); if (tapJumps(e)) down(); });
+$('hud').addEventListener('pointerdown', (e) => { if (e.target.closest('button') || e.target.closest('#pad')) return; e.preventDefault(); swipeStart(e); if (tapJumps(e)) down(); });
 $('pad').addEventListener('pointerdown', (e) => {
   e.preventDefault(); e.stopPropagation();
   const b = e.target.closest('button');
@@ -589,8 +693,8 @@ window.addEventListener('resize', resize); resize();
 
 // menu wiring
 // song carousel: arrows, a swipe on the card, and dots
-for (const d of LEVEL_DEFS) $('sdots').appendChild(document.createElement('i'));
-const stepSong = (k) => { const i = LEVEL_DEFS.findIndex((q) => q.id === G.sel); previewLevel(LEVEL_DEFS[(i + k + LEVEL_DEFS.length) % LEVEL_DEFS.length].id); };
+for (const s of SONG_IDS) $('sdots').appendChild(document.createElement('i'));
+const stepSong = (k) => { const i = SONG_IDS.indexOf(G.sel); previewLevel(SONG_IDS[(i + k + SONG_IDS.length) % SONG_IDS.length]); };
 $('sprev').onclick = () => stepSong(-1);
 $('snext').onclick = () => stepSong(1);
 let cardX = null;
@@ -614,9 +718,15 @@ function phoneFullscreen() {
 $('play').onclick = () => { phoneFullscreen(); start(G.sel); };
 $('pausebtn').onclick = () => pause(true);
 $('resume').onclick = () => pause(false);
-$('restart').onclick = () => { audio.wake(); audio.stopMusic && audio.stopMusic(); G.paused = false; G.playing = false; start(G.level.id); };
+$('restart').onclick = () => { audio.wake(); audio.stopMusic && audio.stopMusic(); G.paused = false; G.playing = false; start(G.sel); };
 $('quit').onclick = toMenu;
-$('again').onclick = () => start(G.level.id);
+$('again').onclick = () => start(G.sel);
+// iPhone / iPad Safari: a web page can't hide Safari's bars. Added to the Home Screen it opens full screen (no bars, no tabs).
+const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const STANDALONE = navigator.standalone || (window.matchMedia && window.matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches);
+let tipSeen = false; try { tipSeen = !!localStorage.getItem('faithdash3d.iostip'); } catch { /* fine */ }
+if (IOS && !STANDALONE && !tipSeen) $('iostip').classList.remove('hidden');
+$('iosok').onclick = () => { $('iostip').classList.add('hidden'); try { localStorage.setItem('faithdash3d.iostip', '1'); } catch { /* fine */ } };
 $('menubtn').onclick = toMenu;
 // ---------- quality button (menu top bar and pause card) ----------
 function applyQuality(id) {
@@ -675,7 +785,7 @@ document.querySelector('.mlogo img').src = logoUrl;
 
 show('menu');
 // build the first world once the Blender models are in (falls back to code shapes if they fail)
-A.loadAssets().finally(() => previewLevel(1));
+A.loadAssets().finally(() => previewLevel('drop'));
 if (new URLSearchParams(location.search).has('nointro')) $('intro').classList.add('hidden'); else playIntro();
-window.__fd3 = { G, start, THREE, scene, camera, renderer, bloom, flames, sparks }; // test hooks only
+window.__fd3 = { G, start, THREE, scene, camera, renderer, bloom, flames, sparks, stageClear, openQuiz, answer, loadStage, BD, frame }; // test hooks only (frame(t, true) draws one frame)
 requestAnimationFrame(frame);

@@ -51,10 +51,11 @@ export function planLaneHazards(lv) {
     const beat = Math.round(mid / lv.tpb) * lv.tpb; // on the beat
     if (beat < a + 4.5 || beat > b - 1.5) continue; // at least 4.5 tiles of calm road first: room to land, then react
     // the surface the runner is actually on = the highest solid top here; it must cover the whole stretch (no steps)
-    const near = lv.solids.filter((s) => s.y1 > s.y0 && s.x < beat + 3 && s.x + s.w > beat - 3);
+    const near = lv.solids.filter((s) => s.y1 > s.y0 && s.x < beat + 3 && s.x + s.w > beat - 4.5); // 4.5 tiles of flat road before it (no step just before)
     if (!near.length) continue;
     const top = Math.max(...near.map((s) => s.y1));
-    if (!near.some((s) => s.y1 === top && s.x <= beat - 3 && s.x + s.w >= beat + jumpLen - 2)) continue;
+    const flat = near.find((s) => s.y1 === top && s.x <= beat - 4.5 && s.x + s.w >= beat + jumpLen - 2);
+    if (!flat || near.some((s) => s.y1 > top)) continue;
     if (lv.solids.some((s) => s.y0 > top + 0.1 && s.x < beat + jumpLen && s.x + s.w > beat - 3)) continue; // a ceiling here
     if (beat - last < 12) continue;
     // a hurdle needs room to land after jumping it; otherwise use a gate
@@ -64,7 +65,7 @@ export function planLaneHazards(lv) {
     const freeLane = LANES[Math.floor(r() * 3)];
     const others = LANES.filter((l) => l !== freeLane);
     const lanes = n === 2 ? others : [others[Math.floor(r() * 2)]];
-    out.push({ type, x: beat, w: type === 'gate' ? 0.5 : 0.9, y: top, lanes, a, b }); // a..b = the calm stretch it sits in
+    out.push({ type, x: beat, w: type === 'gate' ? 0.5 : 0.9, y: top, lanes, a: Math.max(a, flat.x), b }); // a..b = the calm stretch it sits in
     last = beat;
   }
   return out;
