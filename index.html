@@ -35,29 +35,29 @@
     #menu { position: fixed; inset: 0; z-index: 10; pointer-events: none; background: radial-gradient(ellipse 70% 55% at 50% 52%, rgba(8,6,28,0) 40%, rgba(8,6,28,.55) 100%), linear-gradient(rgba(8,6,28,.55), rgba(8,6,28,0) 22%, rgba(8,6,28,0) 58%, rgba(8,6,28,.8)); }
     #menu > * { pointer-events: auto; }
     .mtop { position: absolute; left: 0; right: 0; top: 0; display: flex; justify-content: space-between; align-items: center; padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); }
-    .pill { display: flex; align-items: center; gap: 8px; background: linear-gradient(180deg, rgba(30,22,80,.85), rgba(14,10,44,.85)); border: 1.5px solid rgba(255,217,138,.55); border-radius: 999px; padding: 6px 14px 6px 6px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
-    .pill i { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 14px; color: #5a2a00; background: radial-gradient(circle at 35% 30%, #fff3c4, #ffb52a 60%, #b8650a); box-shadow: 0 0 10px rgba(255,190,80,.6); }
-    .pill b { font-family: 'Barlow Condensed', sans-serif; font-size: 20px; letter-spacing: .04em; } .pill small { font-size: 9px; letter-spacing: .18em; color: var(--dim); display: block; margin-bottom: -3px; }
-    .icon { width: 50px; height: 50px; border-radius: 16px; border: 1.5px solid rgba(255,255,255,.22); background: linear-gradient(180deg, rgba(48,36,120,.9), rgba(18,12,56,.9)); box-shadow: 0 5px 0 rgba(6,4,24,.9), 0 8px 18px rgba(0,0,0,.45); font-size: 22px; display: grid; place-items: center; transition: transform .1s; }
+    .pill { display: flex; align-items: center; gap: 8px; background: linear-gradient(180deg, rgba(30,22,80,.85), rgba(14,10,44,.85)); border: 1.5px solid rgba(255,217,138,.55); border-radius: 999px; padding: 8px 20px 8px 8px; gap: 10px; box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+    .pill i { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 19px; color: #5a2a00; background: radial-gradient(circle at 35% 30%, #fff3c4, #ffb52a 60%, #b8650a); box-shadow: 0 0 10px rgba(255,190,80,.6); }
+    .pill b { font-family: 'Barlow Condensed', sans-serif; font-size: 27px; letter-spacing: .04em; } .pill small { font-size: 11px; letter-spacing: .18em; color: var(--dim); display: block; margin-bottom: -3px; }
+    .icon { width: 64px; height: 64px; border-radius: 18px; border: 1.5px solid rgba(255,255,255,.22); background: linear-gradient(180deg, rgba(48,36,120,.9), rgba(18,12,56,.9)); box-shadow: 0 5px 0 rgba(6,4,24,.9), 0 8px 18px rgba(0,0,0,.45); font-size: 29px; display: grid; place-items: center; transition: transform .1s; }
     .icon:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(6,4,24,.9), 0 4px 10px rgba(0,0,0,.4); }
     .mlogo { position: absolute; left: 0; right: 0; top: max(64px, calc(env(safe-area-inset-top) + 52px)); display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
     .mlogo img { width: min(420px, 78vw); filter: drop-shadow(0 8px 28px rgba(255,170,60,.45)); animation: float 4s ease-in-out infinite; }
     .mlogo span { font-size: 11px; letter-spacing: .32em; color: var(--mint); font-weight: 700; text-shadow: 0 2px 10px rgba(0,0,0,.7); }
     @keyframes float { 50% { transform: translateY(-6px); } }
-    .mside { position: absolute; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 16px; align-items: center; }
+    .mside { position: absolute; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 18px; align-items: center; }
     .mside.l { left: max(16px, env(safe-area-inset-left)); } .mside.r { right: max(16px, env(safe-area-inset-right)); }
-    .big-icon { width: 66px; height: 66px; border-radius: 20px; font-size: 26px; }
-    .mside label { font-size: 10px; font-weight: 700; letter-spacing: .14em; margin-top: -8px; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
+    .big-icon { width: 86px; height: 86px; border-radius: 24px; font-size: 36px; }
+    .mside label { font-size: 13px; font-weight: 700; letter-spacing: .14em; margin-top: -8px; text-shadow: 0 2px 6px rgba(0,0,0,.8); }
     .mbottom { position: absolute; left: 0; right: 0; bottom: max(18px, calc(env(safe-area-inset-bottom) + 10px)); display: flex; flex-direction: column; align-items: center; gap: 12px; }
-    .carousel { display: flex; align-items: center; gap: 10px; }
-    .arrow { width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.25); background: rgba(14,10,44,.75); font-size: 18px; color: var(--mint); }
-    .scard { width: min(300px, 62vw); padding: 10px 16px 12px; border-radius: 18px; text-align: center; background: linear-gradient(180deg, rgba(42,30,110,.92), rgba(16,11,48,.92)); border: 1.5px solid rgba(159,245,210,.5); box-shadow: 0 0 24px rgba(159,245,210,.18), 0 10px 26px rgba(0,0,0,.45); touch-action: pan-y; }
+    .carousel { display: flex; align-items: center; gap: 14px; }
+    .arrow { width: 60px; height: 60px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.25); background: rgba(14,10,44,.75); font-size: 24px; color: var(--mint); }
+    .scard { width: min(340px, 60vw); padding: 12px 18px 14px; border-radius: 18px; text-align: center; background: linear-gradient(180deg, rgba(42,30,110,.92), rgba(16,11,48,.92)); border: 1.5px solid rgba(159,245,210,.5); box-shadow: 0 0 24px rgba(159,245,210,.18), 0 10px 26px rgba(0,0,0,.45); touch-action: pan-y; }
     .scard small { display: block; font-size: 9px; letter-spacing: .26em; color: var(--mint); font-weight: 700; }
-    .scard b { display: block; font-family: 'Barlow Condensed', sans-serif; font-size: 30px; letter-spacing: .03em; line-height: 1.1; }
+    .scard b { display: block; font-family: 'Barlow Condensed', sans-serif; font-size: 35px; letter-spacing: .03em; line-height: 1.1; }
     .scard em { display: block; font-style: normal; font-size: 11px; letter-spacing: .12em; color: var(--dim); }
     .scard .best { margin-top: 6px; display: inline-flex; gap: 6px; align-items: center; font-size: 11px; letter-spacing: .14em; color: var(--gold); font-weight: 700; }
     .dots { display: flex; gap: 6px; } .dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.25); transition: .2s; } .dots i.on { background: var(--mint); box-shadow: 0 0 8px var(--mint); width: 18px; border-radius: 4px; }
-    #play { min-width: min(300px, 70vw); padding: 16px 40px; border: 0; border-radius: 999px; font-family: 'Barlow Condensed', sans-serif; font-size: 30px; font-weight: 700; letter-spacing: .12em; color: #3a1d00;
+    #play { min-width: min(380px, 78vw); padding: 20px 52px; border: 0; border-radius: 999px; font-family: 'Barlow Condensed', sans-serif; font-size: 40px; font-weight: 700; letter-spacing: .12em; color: #3a1d00;
       background: linear-gradient(180deg, #fff1b0, #ffc23a 45%, #ff9a10); box-shadow: 0 6px 0 #a85a00, 0 10px 30px rgba(255,170,40,.55); animation: pulse 1.6s ease-in-out infinite; transition: transform .1s; }
     #play:active { transform: translateY(4px); box-shadow: 0 2px 0 #a85a00, 0 6px 18px rgba(255,170,40,.5); }
     @keyframes pulse { 50% { box-shadow: 0 6px 0 #a85a00, 0 10px 44px rgba(255,190,60,.9); } }
@@ -73,8 +73,12 @@
     @media (max-height: 500px) {
       .mlogo { top: max(10px, env(safe-area-inset-top)); } .mlogo img { width: min(260px, 40vw); } .mlogo span { display: none; }
       .mbottom { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px 16px; bottom: max(10px, env(safe-area-inset-bottom)); }
-      .scard { width: 220px; padding: 6px 12px 8px; } .scard b { font-size: 22px; } .dots { order: 3; width: 100%; justify-content: center; }
-      #play { min-width: 170px; padding: 12px 26px; font-size: 24px; } .big-icon { width: 54px; height: 54px; font-size: 22px; } .mside { gap: 12px; }
+      .scard { width: 240px; padding: 6px 12px 8px; } .scard b { font-size: 25px; } .dots { order: 3; width: 100%; justify-content: center; }
+      #play { min-width: 210px; padding: 14px 32px; font-size: 30px; } .big-icon { width: 68px; height: 68px; font-size: 29px; } .mside { gap: 14px; }
+      .icon { width: 54px; height: 54px; font-size: 25px; } .arrow { width: 50px; height: 50px; font-size: 21px; }
+      .pill { padding: 6px 16px 6px 6px; } .pill i { width: 30px; height: 30px; font-size: 16px; } .pill b { font-size: 23px; }
+      .bestpill { display: none; } /* the best score is on the song card too; this keeps the name clear of the logo */
+      .namepill b { max-width: 150px; }
       .keys { display: none; }
     }
 
@@ -115,6 +119,13 @@
     #pad button:active, #pad button.on { background: rgba(159,245,210,.22); opacity: 1; }
     #pad button[data-k="J"] { width: 78px; height: 78px; font-size: 26px; border-color: rgba(255,217,138,.4); color: rgba(255,217,138,.9); }
     #pad .grp { display: flex; gap: 14px; align-items: flex-end; }
+    /* narrow phones held upright: everything still big, but it has to fit across 320-430 px */
+    @media (max-width: 480px) {
+      .bestpill { display: none; } .namepill b { max-width: min(150px, calc(100vw - 250px)); } .mgroup { gap: 8px; }
+      .icon { width: 54px; height: 54px; font-size: 25px; }
+      .carousel { gap: 8px; } .arrow { width: 48px; height: 48px; font-size: 20px; } .scard { width: calc(100vw - 180px); }
+      #play { min-width: calc(100vw - 48px); }
+    }
     @media (pointer: coarse) {
       #pad button { display: block; }
       .next { bottom: max(14px, env(safe-area-inset-bottom)); }
@@ -145,7 +156,7 @@
     #msg { position: fixed; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; pointer-events: none; font-family: 'Barlow Condensed', sans-serif; font-size: 64px; font-weight: 700; letter-spacing: .06em; text-shadow: 0 4px 30px rgba(0,0,0,.7); }
 
     /* ---------- pause / results cards ---------- */
-    .mgroup { display: flex; gap: 10px; align-items: center; }
+    .mgroup { display: flex; gap: 12px; align-items: center; }
     .namepill { color: #fff; cursor: pointer; font: inherit; text-align: left; max-width: 46vw; }
     .namepill b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 30vw; display: block; }
     #nameinput { font: 600 18px 'Barlow Condensed', sans-serif; letter-spacing: .04em; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.08); color: #fff; outline: none; text-align: center; }
@@ -215,7 +226,7 @@
   <div id="menu">
     <div id="iostip" class="hidden">For full screen on iPhone: tap <b>Share</b> then <b>Add to Home Screen</b>, and play from the new icon.<button id="iosok">OK</button></div>
     <div class="mtop">
-      <div class="mgroup"><div class="pill"><i>★</i><div><small>BEST</small><b id="mbest">00000</b></div></div>
+      <div class="mgroup"><div class="pill bestpill"><i>★</i><div><small>BEST</small><b id="mbest">00000</b></div></div>
         <button class="pill namepill" id="namebtn"><i>👤</i><div><small>PLAYER</small><b id="pname">SET NAME</b></div></button></div>
       <div class="mgroup"><button class="icon" id="ranksbtn" aria-label="Leaderboard">🏆</button><button class="icon" id="settingsbtn" aria-label="Settings">⚙</button></div>
     </div>
