@@ -16,6 +16,7 @@ import { audio } from '../audio/audio.js';
 import { SONG_URLS } from '../audio/songs.js';
 import * as A from './art3d.js';
 import * as LN from './lanes.js';
+import * as FX from './fx3d.js';
 const LANE_W = A.TRACK_W / 3; // world width of one lane
 import logoUrl from '../assets/logo.webp';
 
@@ -28,14 +29,31 @@ const COURSE = "The Pilgrim's Path";
 const $ = (id) => document.getElementById(id);
 const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+// ---------- picture quality (menu: ⚙ Quality). Saved on this device. ----------
+// auto:  sharp as the device allows, and lowers the resolution by itself if the frame rate drops (best for phones)
+// high:  full screen resolution, full-size glow, bigger shadow, light sharpening + film grain
+// ultra: draws at least a 4K-tall image (supersampled on smaller screens), 8x edge smoothing, the 8K sky if present
+// Phones and tablets (touch screens) get a lighter profile: fewer pixels, smaller glow and shadow, 60 fps cap, fewer
+// flame particles, and no Ultra. It is still the same browser game, nothing to install.
+const MOBILE = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const QUALITY = {
+  auto: MOBILE
+    ? { name: 'Auto', dpr: () => Math.min(window.devicePixelRatio || 1, 1.25), samples: 2, bloom: 0.35, shadow: 512, sharpen: 0, grain: 0 }
+    : { name: 'Auto', dpr: () => Math.min(window.devicePixelRatio || 1, 1.75), samples: 4, bloom: 0.5, shadow: 1024, sharpen: 0, grain: 0.012 },
+  high: { name: 'High', dpr: () => Math.min(Math.max(window.devicePixelRatio || 1, 1.5), 2), samples: 4, bloom: 1, shadow: 2048, sharpen: 0.22, grain: 0.018 },
+  ultra: { name: 'Ultra 4K', dpr: () => Math.min(3, Math.max(window.devicePixelRatio || 1, 2160 / Math.max(1, window.innerHeight))), samples: 8, bloom: 1, shadow: 4096, sharpen: 0.3, grain: 0.02 },
+};
+let quality = 'auto';
+try { quality = QUALITY[localStorage.getItem('faithdash3d.quality')] ? localStorage.getItem('faithdash3d.quality') : 'auto'; } catch { /* storage blocked */ }
+if (MOBILE && quality === 'ultra') quality = 'high';
 const MAX_DPR = Math.min(window.devicePixelRatio || 1, 2);
-let dpr = Math.min(MAX_DPR, 1.75); // lowered automatically if the device can't keep up (see autoQuality)
+let dpr = QUALITY[quality].dpr(); // in Auto it is lowered automatically if the device can't keep up (see autoQuality)
 renderer.setPixelRatio(dpr);
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
 renderer.info.autoReset = false; // the glow pass renders several times a frame; count the whole frame
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 700);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 320); // nothing past the fog (230) is drawn
 // soft studio reflections so gold and metal shine instead of looking black
 const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -49,7 +67,7 @@ const rimLight = new THREE.DirectionalLight(0x8fd8ff, 0.9); rimLight.position.se
 
 // glow (bloom): bright crystals, eyes, lasers and coins light up softly
 // render into a multisampled target: post effects otherwise switch anti-aliasing off and edges look jagged
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: Math.min(QUALITY[quality].samples, renderer.capabilities.maxSamples || 4) }));
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.22, 0.92);
 composer.addPass(bloom);
@@ -57,11 +75,16 @@ composer.addPass(new OutputPass());
 // colour grade to match the intro film: teal in the shadows, warm gold in the highlights, a little more contrast and
 // saturation, and a soft vignette. Runs last, on the final picture.
 const grade = new ShaderPass({
-  uniforms: { tDiffuse: { value: null }, amount: { value: 1 } },
+  uniforms: { tDiffuse: { value: null }, amount: { value: 1 }, texel: { value: new THREE.Vector2(1 / 1920, 1 / 1080) }, sharpen: { value: 0 }, grain: { value: 0 }, time: { value: 0 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float amount; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float amount; uniform vec2 texel; uniform float sharpen; uniform float grain; uniform float time; varying vec2 vUv;
     void main(){
       vec4 src = texture2D(tDiffuse, vUv); vec3 c = src.rgb;
+      if (sharpen > 0.0) {                               // light sharpening: crisper edges and texture detail
+        vec3 n = texture2D(tDiffuse, vUv + vec2(texel.x, 0.0)).rgb + texture2D(tDiffuse, vUv - vec2(texel.x, 0.0)).rgb
+               + texture2D(tDiffuse, vUv + vec2(0.0, texel.y)).rgb + texture2D(tDiffuse, vUv - vec2(0.0, texel.y)).rgb;
+        c += sharpen * (c * 4.0 - n);
+      }
       float l = dot(c, vec3(0.299, 0.587, 0.114));
       vec3 shadowTint = vec3(-0.02, 0.025, 0.06), highTint = vec3(0.06, 0.025, -0.045);
       c += shadowTint * (1.0 - smoothstep(0.0, 0.5, l)) + highTint * smoothstep(0.45, 1.0, l);
@@ -69,16 +92,29 @@ const grade = new ShaderPass({
       c = (c - 0.5) * 1.07 + 0.5;                        // contrast
       vec2 d = vUv - 0.5; float vig = smoothstep(0.85, 0.25, length(d * vec2(1.0, 0.85)));
       c *= mix(0.72, 1.0, vig);                          // vignette
+      c += (fract(sin(dot(vUv / texel + time, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * grain; // fine film grain (hides colour banding)
       gl_FragColor = vec4(mix(src.rgb, clamp(c, 0.0, 1.0), amount), src.a);
     }`,
 });
 composer.addPass(grade);
 
 const sparks = new A.Sparks(scene);
-const flames = new A.Sparks(scene, 1400, { size: 0.34, grav: -5 });
+const flames = new FX.FlameFX(scene, MOBILE ? 450 : 900);   // animated flame sprites, coloured by the cube skin
+const burst = new FX.BurstRing(scene);                      // light ring on PERFECT / GREAT jumps
+const streaks = new FX.SpeedLines(scene, MOBILE ? 16 : 36);  // faint light streaks rushing past
+const clouds = new FX.CloudLayer(scene);                    // drifting cloud sheets under the road
 const aurora = A.makeAurora(); scene.add(aurora);
 // far-away islands fade into the same colour as the painted clouds
-A.setSkyColorHook((col) => { if (scene.fog) scene.fog.color.copy(col).lerp(new THREE.Color(0x3a2f7a), 0.35); });
+A.setSkyColorHook((col, img) => {
+  if (scene.fog) scene.fog.color.copy(col).lerp(new THREE.Color(0x3a2f7a), 0.35);
+  // reflections + ambient light from the sky painting itself (replaces the plain grey studio light)
+  if (img) {
+    const t = new THREE.CanvasTexture(FX.skyEnvCanvas(img, col)); t.colorSpace = THREE.SRGBColorSpace; t.mapping = THREE.EquirectangularReflectionMapping;
+    const env = pmrem.fromEquirectangular(t).texture; t.dispose();
+    if (scene.environment && scene.environment !== env) scene.environment.dispose();
+    scene.environment = env; scene.environmentIntensity = 0.9;
+  }
+});
 
 // ---- scoring: rewarded for keeping the beat ----
 const RATE = { perfect: 0.06, great: 0.11, good: 0.17, near: 0.35 };
@@ -112,10 +148,14 @@ function buildWorld(lv) {
   A.buildTrack(lv, root, M);
   G.floaters = A.buildScenery(lv, root, th);
   G.gears = A.buildLandmarks(lv, root, M);
-  A.buildSpikes(lv, root, M);
-  for (const s of lv.saws) { const { g, disc } = A.makeSaw(s.r, M); add(g); G.dyn.push({ k: 'saw', o: s, g, disc }); }
-  for (const s of lv.spinners) { const g = add(A.makeSpinner(s.len, M)); G.dyn.push({ k: 'spin', o: s, g }); }
-  for (const s of lv.pulses) { const g = add(A.makePulse(s, M)); g.position.set(0, s.y, wz(s.x)); G.dyn.push({ k: 'pulse', o: s, g }); }
+  // rhythm obstacles get 1-2 lanes each (dodge or jump); the sim steps against a per-lane copy of the level (lanes.js)
+  G.hzLanes = LN.assignHazardLanes(lv); G.lvLanes = LN.laneLevels(lv, G.hzLanes);
+  G.splitXs = [...G.hzLanes.keys()].map((h) => (h.cx !== undefined ? h.cx : h.x)).sort((a, b) => a - b); // for the HUD hint
+  const lanesOf = (h) => G.hzLanes.get(h);
+  A.buildSpikes(lv, root, M, lanesOf);
+  for (const s of lv.saws) for (const lx of laneXs(lanesOf(s))) { const { g, disc } = A.makeSaw(s.r, M); add(g); G.dyn.push({ k: 'saw', o: s, g, disc, lx }); }
+  for (const s of lv.spinners) for (const lx of laneXs(lanesOf(s))) { const g = add(A.makeSpinner(s.len, M)); G.dyn.push({ k: 'spin', o: s, g, lx }); }
+  for (const s of lv.pulses) { const g = add(A.makePulse(s, M, lanesOf(s))); g.position.set(0, s.y, wz(s.x)); G.dyn.push({ k: 'pulse', o: s, g }); }
   for (const pl of lv.platforms) { const g = add(A.makePlatform(pl, M)); G.dyn.push({ k: 'plat', o: pl, g }); }
   lv.coins.forEach((c, i) => {
     const g = add(A.makeCoin(M, 0.75)); g.position.set(0, 1.7, wz(c.x)); G.dyn.push({ k: 'coin', i, g });
@@ -133,7 +173,7 @@ function buildWorld(lv) {
   // lane obstacles (dodge barriers and roll-under gates): an extra layer on top of the 2D rules, see lanes.js
   G.hz = { list: LN.planLaneHazards(lv), from: 0 };
   for (const h of G.hz.list) {
-    const g = add(h.type === 'gate' ? A.makeGate(M, LN.GATE_Y) : A.makeBarrier(M, h.lanes, LANE_W, LN.BARRIER_H));
+    const g = add(h.type === 'gate' ? A.makeGate(M, h.lanes, LANE_W, LN.GATE_Y) : A.makeHurdle(M, h.lanes, LANE_W));
     g.position.set(0, h.y, wz(h.x + h.w / 2));
   }
   G.player = add(A.makeHero(PW, PH)); G.player.userData.dyn = true;
@@ -143,6 +183,9 @@ function buildWorld(lv) {
   // the ground heights, for the shadow under the hero
   G.tops = lv.solids.filter((s) => s.y1 > s.y0).map((s) => [s.x, s.x + s.w, s.y1]);
 }
+
+// world x of each lane an obstacle is in (a full-width obstacle is drawn once, in the middle)
+const laneXs = (lanes) => (lanes ? lanes.map((l) => l * LANE_W) : [0]);
 
 // ---------- the frame ----------
 function groundUnder(x, y) {
@@ -184,28 +227,34 @@ function updatePlayer(v, p, dt) {
   // ember trail
   if (!p.dead) {
     const fz = pl.position.z, fy = pl.position.y;
-    const n = Math.min(10, Math.round(dt * 420));
+    const n = Math.min(8, Math.round(dt * (MOBILE ? 110 : 240)));
     for (let k = 0; k < n; k++) {
       // flames lick up off the crown and the two sides, then trail away as the cube runs on
       const side = Math.random() < 0.5 ? (Math.random() < 0.5 ? -1 : 1) : 0;
       const fx = side ? side * (0.42 + Math.random() * 0.08) : (Math.random() - 0.5) * 0.6;
       const fyy = side ? fy - 0.2 + Math.random() * 0.6 : fy + 0.42 + Math.random() * 0.15;
-      flames.emit(lx + fx, fyy, fz - 0.2 + (Math.random() - 0.5) * 0.6, 1, G.flameCols || [0xff4a00, 0xff8a10, 0xffb52a, 0xffe08a], 0.5, 0.9, 0.2);
+      flames.emit(lx + fx, fyy, fz - 0.1 + (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.4, 0.9 + Math.random() * 0.9, 0.4 + Math.random() * 0.6, 0.3 + Math.random() * 0.25);
     }
   }
 }
 
 const smooth = (t) => t * t * (3 - 2 * t);
+// coin glints pulse and turn, each coin on its own rhythm
+function twinkle(g, wall) {
+  const gl = g.userData.glint; if (!gl) return;
+  const k = Math.max(0, Math.sin(wall * 0.004 + g.position.z * 0.7));
+  gl.scale.setScalar(gl.userData.base * (0.35 + 0.9 * k * k)); gl.material.rotation = wall * 0.0012; gl.material.opacity = 0.4 + 0.6 * k;
+}
 const TMP = { x: 0, y: 0 };
 function updateDynamic(t, wall) {
   const p = G.p;
   for (const d of G.dyn) {
-    if (d.k === 'saw') { sawPos(d.o, t, TMP); d.g.position.set(0, TMP.y, wz(TMP.x)); d.disc.rotation.x = -t * 8; }
-    else if (d.k === 'spin') { d.g.position.set(0, d.o.cy, wz(d.o.cx)); d.g.rotation.x = spinnerAngle(d.o, t); }
+    if (d.k === 'saw') { sawPos(d.o, t, TMP); d.g.position.set(d.lx, TMP.y, wz(TMP.x)); d.disc.rotation.x = -t * 8; }
+    else if (d.k === 'spin') { d.g.position.set(d.lx, d.o.cy, wz(d.o.cx)); d.g.rotation.x = spinnerAngle(d.o, t); }
     else if (d.k === 'pulse') d.g.visible = pulseOn(d.o, t);
     else if (d.k === 'plat') { platPos(d.o, t, TMP); d.g.position.set(0, TMP.y + d.o.h / 2, wz(TMP.x + d.o.w / 2)); }
-    else if (d.k === 'coin') { d.g.rotation.y = wall * 0.0025; d.g.visible = !(p.coinsUsed && p.coinsUsed[d.i]); }
-    else if (d.k === 'secret') { d.g.rotation.y = wall * 0.004; d.g.visible = !(p.secretsGot && p.secretsGot[d.o.i]); }
+    else if (d.k === 'coin') { d.g.rotation.y = wall * 0.0025; d.g.visible = !(p.coinsUsed && p.coinsUsed[d.i]); twinkle(d.g, wall); }
+    else if (d.k === 'secret') { d.g.rotation.y = wall * 0.004; d.g.visible = !(p.secretsGot && p.secretsGot[d.o.i]); twinkle(d.g, wall); }
     else if (d.k === 'portal') d.disc.rotation.z = -wall * 0.003;
     else if (d.k === 'orb') d.g.children[1].rotation.x = wall * 0.003;
   }
@@ -222,15 +271,14 @@ function updateCamera(v, dt) {
   G.camY = G.camY === undefined || G.camPos.lengthSq() === 0 ? y * 0.6 : G.camY + (y * 0.6 - G.camY) * (1 - Math.exp(-dt * 2.5));
   const want = new THREE.Vector3(), look = new THREE.Vector3();
   if (G.showcase) {
-    // customise screen: slow orbit close around the hero
-    // the hero stands at the start of the road; frame it on the right half of the screen (the picker is on the left)
+    // skins screen: a slow full orbit close around the hero, which stands in the middle of the screen
     const hp = G.player ? G.player.position : new THREE.Vector3(0, 0.4, -0.4), a = 0.9 + G.attractT * 0.35;
-    want.set(hp.x + Math.sin(a) * 3.2, hp.y + 0.9, hp.z + Math.cos(a) * 3.2);
-    const f = new THREE.Vector3().subVectors(hp, want).normalize(), right = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0, 1, 0)).normalize();
-    look.copy(hp).addScaledVector(right, camera.aspect > 1 ? -1.1 : 0).y += camera.aspect > 1 ? 0 : -1.1;
+    want.set(hp.x + Math.sin(a) * 3.0, hp.y + 0.75, hp.z + Math.cos(a) * 3.0); look.set(hp.x, hp.y + 0.15, hp.z);
   } else if (G.attract) {
-    const a = Math.sin(G.attractT * 0.15) * 0.5 + 0.55;
-    want.set(Math.sin(a) * 11, 5 + Math.sin(G.attractT * 0.2), z + Math.cos(a) * 11); look.set(-1.5, 1.5, z - 14);
+    // main menu: the hero centre stage, the road running away behind it, the camera swaying gently
+    const hp = G.player ? G.player.position : new THREE.Vector3(0, 0.4, -0.4), a = 0.75 + Math.sin(G.attractT * 0.2) * 0.3;
+    const r = camera.aspect < 1 ? 6.4 : 5.2;
+    want.set(hp.x + Math.sin(a) * r, 1.9, hp.z + Math.cos(a) * r); look.set(hp.x, camera.aspect > 1.4 ? 0.95 : 0.55, hp.z); // aimed at the hero (a bit above it on wide screens, so it sits below the logo)
   } else if (G.cam === 'chase') {
     const a = CHASE_ANGLE * Math.PI / 180;
     const lx = G.L ? G.L.lx * LANE_W * 0.7 : 0;
@@ -259,6 +307,7 @@ function rateJump(tp) {
   G.best = Math.max(G.best, G.streak);
   popRating(kind);
   if (kind === 'perfect' || kind === 'great') {
+    burst.fire(G.player.position, kind === 'perfect' ? 0xffe08a : 0x9ff5d2);
     const pl = G.player.position; sparks.emit(0, pl.y, pl.z, kind === 'perfect' ? 18 : 9, kind === 'perfect' ? [0xffe27a, 0xffffff, 0x7df3ff] : [0x7df3ff, 0xffffff], 3.5);
     if (audio.sfx) audio.sfx(kind);
   }
@@ -290,9 +339,12 @@ function nextMove(p, ct) {
   const h = G.hz && G.hz.list.slice(G.hz.from, G.hz.from + 3).find((q) => q.x + q.w > p.x);
   if (h) {
     const hb = (h.x - p.x) / G.level.speed / G.level.spb;
-    if (hb < beats && hb < 6) return [h.type === 'gate' ? 'ROLL ↓' : (h.lanes.includes(G.L.lane) ? '◀ DODGE ▶' : 'STAY CLEAR'), hb.toFixed(1) + ' BEATS'];
+    if (hb < beats && hb < 6) return [LN.hint(h, G.L.lane), hb.toFixed(1) + ' BEATS'];
   }
-  return [p.grav < 0 ? 'JUMP ↓' : 'JUMP ↑', beats > 8 ? '' : beats.toFixed(1) + ' BEATS'];
+  // the beat-jump's obstacle can also be dodged when it only covers some lanes
+  const cx = ct2[lo] * G.level.speed;
+  const split = G.splitXs && G.splitXs.some((x) => x > cx - 1 && x < cx + 4);
+  return [(p.grav < 0 ? 'JUMP ↓' : 'JUMP ↑') + (split ? ' or DODGE' : ''), beats > 8 ? '' : beats.toFixed(1) + ' BEATS'];
 }
 const pad = (n) => String(Math.floor(n)).padStart(5, '0');
 function hud(p, ct) {
@@ -317,28 +369,36 @@ function hud(p, ct) {
 // ---------- smoothness: keep the frame rate up by lowering the render resolution if needed ----------
 let fAvg = 16.7, fCheck = 0;
 function autoQuality(ms, wall) {
-  if (document.hidden) return;
+  if (document.hidden || quality !== 'auto') return; // High and Ultra keep the resolution you picked
   fAvg += (Math.min(ms, 100) - fAvg) * 0.05;
   if (wall < fCheck) return;
   fCheck = wall + 2000;
-  if (fAvg > 22 && dpr > 0.75) { dpr = Math.max(0.75, dpr - 0.25); resize(); }         // struggling: render fewer pixels
-  else if (fAvg < 13 && dpr < Math.min(MAX_DPR, 1.75)) { dpr = Math.min(MAX_DPR, 1.75, dpr + 0.25); resize(); } // headroom: sharpen back up
+  const floor = MOBILE ? 0.6 : 0.75;
+  if (fAvg > 22 && dpr > floor) { dpr = Math.max(floor, dpr - 0.2); resize(); }         // struggling: render fewer pixels
+  else if (fAvg < 13 && dpr < QUALITY.auto.dpr()) { dpr = Math.min(QUALITY.auto.dpr(), dpr + 0.2); resize(); } // headroom: sharpen back up
 }
 
 // ---------- main loop ----------
+let lastDraw = 0;
 function frame(wall) {
   requestAnimationFrame(frame);
+  // phones: cap at 60 fps (120 Hz screens would otherwise double the work and drain the battery)
+  if (MOBILE && wall - lastDraw < 15) return;
+  lastDraw = wall;
   renderer.info.reset();
   autoQuality(wall - G.wall, wall);
+  grade.uniforms.time.value = (wall % 10000) / 1000;
   const dt = Math.min(0.1, (wall - G.wall) / 1000 || 0.016); G.wall = wall;
   const lv = G.level; if (!lv) { composer.render(); return; }
   const p = G.p;
   let ct = G.clock.t;
   if (G.attract) {
     G.attractT += dt; ct = 0;
-    const v = { x: (G.attractT * 2) % 30, y: 0, rot: 0 };
+    const v = { x: 0, y: 0, rot: 0 };
     p.x = 0;
-    updatePlayer({ x: 0, y: 0, rot: 0 }, p, dt); updateDynamic(G.attractT, wall);
+    // idle: a happy little hop every second or so (looks only)
+    const hop = Math.max(0, Math.sin(G.attractT * 3.2)); p.grounded = hop < 0.05;
+    updatePlayer({ x: 0, y: G.showcase ? 0 : hop * hop * 0.45, rot: 0 }, p, dt); updateDynamic(G.attractT, wall);
     updateCamera(v, dt);
   } else {
     if (G.playing && !G.paused) {
@@ -357,7 +417,8 @@ function frame(wall) {
           p.hold = G.hold;
           const pressed = G.press;
           applyLaneInput(p);
-          const evs = step(lv, p, DT, G.press); G.press = false;
+          // collide only with the obstacles in the lane(s) the runner is in
+          const evs = step(G.lvLanes[LN.laneKey(G.L.lx, LANE_W, PW)] || lv, p, DT, G.press); G.press = false;
           for (let i = 0; i < evs.length; i++) {
             const e = evs[i];
             if (e === EV.DEAD) crashed(wall);
@@ -381,7 +442,10 @@ function frame(wall) {
     hud(p, ct);
   }
   if (G.player) { const pp = G.player.position; sun.position.set(pp.x - 6, pp.y + 14, pp.z + 5); sun.target.position.copy(pp); }
-  sparks.update(dt); flames.update(dt);
+  sparks.update(dt); flames.update(dt); burst.update(dt);
+  FX.fxTime.value = wall / 1000;
+  if (G.player) streaks.update(dt, G.player.position, G.playing && !G.paused && !G.attract);
+  clouds.update(camera.position, wall / 1000);
   aurora.position.copy(camera.position); aurora.userData.tick(wall / 1000);
   composer.render();
 }
@@ -417,8 +481,12 @@ function gameOver() {
   G.playing = false; audio.fadeOutMusic && audio.fadeOutMusic(0.6);
   results('Out of lives', 'Get up and run again.');
 }
+// best score per song, kept on this device
+const bestOf = (song) => { try { return +localStorage.getItem('faithdash3d.best.' + song) || 0; } catch { return 0; } };
+function saveBest(song, s) { if (s <= bestOf(song)) return false; try { localStorage.setItem('faithdash3d.best.' + song, String(s)); } catch { /* fine */ } return true; }
 function results(title, sub) {
   G.playing = false; $('msg').classList.add('hidden');
+  if (saveBest(G.level.song, G.score)) sub = '★ New best score! ★';
   $('o-title').textContent = title; $('o-sub').textContent = sub;
   $('o-score').textContent = pad(G.score); $('o-best').textContent = G.best; $('o-coins').textContent = G.coins;
   $('o-prog').textContent = Math.min(100, Math.round((G.p.furthest / G.level.finishX) * 100)) + '%';
@@ -462,10 +530,11 @@ function previewLevel(id) {
   if (!G.level || G.level.id !== id) buildWorld(lv);
   G.level = lv; G.p = newPlayer(lv); G.prev = null; G.L = LN.newLaneState();
   const d = LEVEL_DEFS.find((q) => q.id === id);
-  $('play').innerHTML = `PLAY ${SONGS[d.song].toUpperCase()} <span>↗</span>`;
-  $('m-level').textContent = COURSE.toUpperCase();
-  $('m-sub').textContent = `${SONGS[d.song]} · ${Math.round(d.bpm)} BPM`.toUpperCase();
-  for (const b of document.querySelectorAll('.song')) b.classList.toggle('on', +b.dataset.id === id);
+  $('sname').textContent = SONGS[d.song];
+  $('smeta').textContent = `${Math.round(d.bpm)} BPM · ${d.difficulty}`.toUpperCase();
+  $('sbest').textContent = pad(bestOf(d.song));
+  $('mbest').textContent = pad(Math.max(...LEVEL_DEFS.map((q) => bestOf(q.song))));
+  [...$('sdots').children].forEach((el, i) => el.classList.toggle('on', LEVEL_DEFS[i].id === id));
 }
 
 // ---------- input: same everywhere, never depends on the camera ----------
@@ -510,31 +579,69 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && G.p
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setPixelRatio(dpr); composer.setPixelRatio(dpr);
-  renderer.setSize(w, h, false); composer.setSize(w, h); bloom.setSize(w * 0.5, h * 0.5); // glow at half size: soft and cheap
+  const q = QUALITY[quality];
+  renderer.setSize(w, h, false); composer.setSize(w, h); bloom.setSize(w * dpr * q.bloom, h * dpr * q.bloom); // Auto: glow at half size
+  grade.uniforms.texel.value.set(1 / (w * dpr), 1 / (h * dpr));
+  flames.setScale(h * dpr);
   camera.aspect = w / h; camera.fov = w < h ? 70 : 52; camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize); resize();
 
 // menu wiring
-for (const d of LEVEL_DEFS) {
-  const b = document.createElement('button'); b.className = 'song'; b.dataset.id = d.id;
-  b.innerHTML = `<i>${SONGS[d.song]}</i><small>${Math.round(d.bpm)} BPM · ${d.difficulty}</small>`;
-  b.onclick = () => previewLevel(d.id);
-  $('songs').appendChild(b);
+// song carousel: arrows, a swipe on the card, and dots
+for (const d of LEVEL_DEFS) $('sdots').appendChild(document.createElement('i'));
+const stepSong = (k) => { const i = LEVEL_DEFS.findIndex((q) => q.id === G.sel); previewLevel(LEVEL_DEFS[(i + k + LEVEL_DEFS.length) % LEVEL_DEFS.length].id); };
+$('sprev').onclick = () => stepSong(-1);
+$('snext').onclick = () => stepSong(1);
+let cardX = null;
+$('scard').addEventListener('pointerdown', (e) => { cardX = e.clientX; });
+$('scard').addEventListener('pointerup', (e) => { if (cardX !== null && Math.abs(e.clientX - cardX) > 30) stepSong(e.clientX < cardX ? 1 : -1); cardX = null; });
+window.addEventListener('keydown', (e) => { if (!$('menu').classList.contains('hidden') && !e.repeat) { if (e.code === 'ArrowLeft') stepSong(-1); else if (e.code === 'ArrowRight') stepSong(1); else if (e.code === 'Enter') $('play').click(); } });
+// settings sheet
+$('settingsbtn').onclick = () => $('settings').classList.remove('hidden');
+$('settingsclose').onclick = () => $('settings').classList.add('hidden');
+$('introbtn').onclick = () => { $('settings').classList.add('hidden'); $('replay').click(); };
+// phones: go fullscreen and turn sideways when the run starts, where the browser allows it (Android Chrome does;
+// iPhone Safari does not, so there the game simply fills the page). Still a web page, nothing installed.
+function phoneFullscreen() {
+  if (!MOBILE) return;
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (req && !document.fullscreenElement) {
+    Promise.resolve(req.call(el, { navigationUI: 'hide' })).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {})).catch(() => {});
+  }
 }
-$('play').onclick = () => start(G.sel);
+$('play').onclick = () => { phoneFullscreen(); start(G.sel); };
 $('pausebtn').onclick = () => pause(true);
 $('resume').onclick = () => pause(false);
 $('restart').onclick = () => { audio.wake(); audio.stopMusic && audio.stopMusic(); G.paused = false; G.playing = false; start(G.level.id); };
 $('quit').onclick = toMenu;
 $('again').onclick = () => start(G.level.id);
 $('menubtn').onclick = toMenu;
+// ---------- quality button (menu top bar and pause card) ----------
+function applyQuality(id) {
+  quality = id; const q = QUALITY[id];
+  try { localStorage.setItem('faithdash3d.quality', id); } catch { /* fine */ }
+  dpr = q.dpr();
+  const s = Math.min(q.samples, renderer.capabilities.maxSamples || 4);
+  if (composer.renderTarget1.samples !== s) { for (const rt of [composer.renderTarget1, composer.renderTarget2]) { rt.samples = s; rt.dispose(); } }
+  if (sun.shadow.mapSize.x !== q.shadow) { sun.shadow.mapSize.set(q.shadow, q.shadow); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
+  grade.uniforms.sharpen.value = q.sharpen; grade.uniforms.grain.value = q.grain;
+  A.setSkyQuality(id === 'ultra');
+  $('quality2').textContent = '⚙ Quality: ' + q.name;
+  for (const b of $('qseg').children) b.classList.toggle('on', b.dataset.q === id);
+  resize();
+}
+const nextQ = () => applyQuality(quality === 'auto' ? 'high' : quality === 'high' && !MOBILE ? 'ultra' : 'auto'); // no Ultra on phones
+$('quality2').onclick = nextQ;
+for (const b of $('qseg').children) { if (b.dataset.q === 'ultra' && MOBILE) b.remove(); else b.onclick = () => applyQuality(b.dataset.q); } // no Ultra on phones
+
 // ---------- cube customisation (saved on this device) ----------
 let skinId = 'flame';
 try { skinId = localStorage.getItem('faithdash3d.skin') || 'flame'; } catch { /* storage blocked: use the default */ }
 function useSkin(id) {
   const s = A.SKINS.find((q) => q.id === id) || A.SKINS[0];
-  skinId = s.id; A.setHeroSkin(s); G.flameCols = s.flames;
+  skinId = s.id; A.setHeroSkin(s); G.flameCols = s.flames; flames.setColors(s.flames);
   try { localStorage.setItem('faithdash3d.skin', s.id); } catch { /* fine */ }
   for (const b of document.querySelectorAll('.skin')) b.classList.toggle('on', b.dataset.id === s.id);
   $('skinname').textContent = s.name; $('skindesc').textContent = s.desc;
@@ -546,8 +653,10 @@ for (const s of A.SKINS) {
   $('skins').appendChild(b);
 }
 $('customize').onclick = () => { G.showcase = true; G.attractT = 0; $('menu').classList.add('hidden'); $('custom').classList.remove('hidden'); };
-$('customdone').onclick = () => { G.showcase = false; $('custom').classList.add('hidden'); $('menu').classList.remove('hidden'); };
+const closeSkins = () => { G.showcase = false; G.camPos.set(0, 0, 0); $('custom').classList.add('hidden'); $('menu').classList.remove('hidden'); };
+$('customdone').onclick = closeSkins; $('customback').onclick = closeSkins;
 useSkin(skinId);
+applyQuality(quality);
 
 // ---------- intro video: plays first, then fades into the live menu ----------
 const vid = $('introvid');
@@ -562,7 +671,7 @@ vid.addEventListener('error', endIntro);
 $('skip').onclick = endIntro;
 $('sound').onclick = () => { vid.muted = !vid.muted; $('sound').textContent = vid.muted ? '🔊 Enable sound' : '🔇 Mute'; if (vid.paused) vid.play().catch(() => {}); };
 $('replay').onclick = () => { vid.muted = false; $('sound').textContent = '🔇 Mute'; playIntro(); };
-document.querySelector('.panel img').src = logoUrl;
+document.querySelector('.mlogo img').src = logoUrl;
 
 show('menu');
 // build the first world once the Blender models are in (falls back to code shapes if they fail)
