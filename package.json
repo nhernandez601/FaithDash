@@ -9,7 +9,7 @@
     "preview": "vite preview --host",
     "bake": "node scripts/bake-levels.mjs",
     "test:levels": "node tests/levels.test.mjs",
-    "test": "node tests/levels.test.mjs && node tests/sim.test.mjs && node tests/lanes.test.mjs && node tests/bend.test.mjs"
+    "test": "node tests/levels.test.mjs && node tests/sim.test.mjs && node tests/lanes.test.mjs && node tests/bend.test.mjs && node tests/board.test.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

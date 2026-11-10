@@ -21,6 +21,7 @@ import * as FX from './fx3d.js';
 import * as BD from './bend.js';
 import * as LK from './look.js';
 import { getBeatMap } from '../audio/music.js';
+import * as LB from '../online/board.js';
 const LANE_W = A.TRACK_W / 3; // world width of one lane
 import logoUrl from '../assets/logo.webp';
 
@@ -74,7 +75,7 @@ const rimLight = new THREE.DirectionalLight(0x8fd8ff, 0.9); rimLight.position.se
 // render into a multisampled target: post effects otherwise switch anti-aliasing off and edges look jagged
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: Math.min(QUALITY[quality].samples, renderer.capabilities.maxSamples || 4) }));
 composer.addPass(new RenderPass(scene, camera));
-const bloom = MOBILE ? new UnrealBloomPass(new THREE.Vector2(1, 1), 0.32, 0.1, 0.97) : new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.22, 0.92);
+const bloom = MOBILE ? new UnrealBloomPass(new THREE.Vector2(1, 1), 0.5, 0.12, 0.9) : new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.22, 0.92);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 // colour grade to match the intro film: teal in the shadows, warm gold in the highlights, a little more contrast and
@@ -374,10 +375,11 @@ function updateLook(t, dt, wall) {
   if (scene.fog) scene.fog.color.copy(MOOD.fog);
   const M = G.M;
   if (M) {
-    const k = (kick + 0.7 * drop) * (MOBILE ? 0.45 : 1);
-    M.top.emissiveIntensity = (MOBILE ? 0.7 : 0.85) + 0.3 * MOOD.night + 0.8 * k + 0.2 * heat;
+    // steady level just under the glow threshold, the kick drum pushes it well over: the lights pop on the beat
+    const k = kick + 0.7 * drop;
+    M.top.emissiveIntensity = (MOBILE ? 0.55 : 0.8) + 0.25 * MOOD.night + 1.6 * k + 0.15 * heat;
     // the neon edges are warm gold at dawn and turn cyan by dusk (cyan under the golden light looked green)
-    M.neon.color.copy(NEON_DAWN).lerp(G.neonBase, Math.min(1, G.P / 1.6)).multiplyScalar(1 + 0.9 * k + 0.3 * MOOD.night);
+    M.neon.color.copy(NEON_DAWN).lerp(G.neonBase, Math.min(1, G.P / 1.6)).multiplyScalar((MOBILE ? 0.75 : 0.9) + 1.6 * k + 0.25 * MOOD.night);
     M.laser.color.copy(G.laserBase).multiplyScalar(1 + 1.2 * kick);
     for (const c of M.crystal) c.emissiveIntensity = 0.9 + 1.1 * kick;
     M.hot.emissiveIntensity = 1.6 + 1.4 * kick;
@@ -642,6 +644,15 @@ function results(title, sub) {
   $('o-score').textContent = pad(G.score); $('o-best').textContent = G.best; $('o-coins').textContent = G.coins;
   $('o-prog').textContent = stageTag();
   show('over');
+  // record the score: on this device always, and on the online leaderboard when it is connected
+  const song = G.level.song, run = G.runId;
+  $('o-rank').textContent = LB.online() ? 'Sending your score…' : '';
+  LB.finishRun(G.score, G.stage, stageTag()).then((r) => {
+    if (run !== G.runId) return;
+    if (r.online) $('o-rank').textContent = `#${r.online.rank} of ${r.online.total} players on ${SONGS[song]}`;
+    else if (r.error) $('o-rank').textContent = r.error;
+    else $('o-rank').textContent = r.local ? `#${r.local} on this device for ${SONGS[song]}` : '';
+  });
 }
 
 // a new run on the chosen song: stage 1 (easy), full lives, score from zero
@@ -658,6 +669,7 @@ async function start(song) {
   if (run !== G.runId) return;
   $('msg').classList.add('hidden');
   banner(COURSE.toUpperCase(), 'From dawn to night', SONGS[song].toUpperCase(), 1600);
+  LB.startRun(song);
   go();
 }
 // the next time round: same song from the top, a harder layout; lives, score and multiplier carry over
@@ -686,6 +698,7 @@ function pause(on) {
   show(on ? 'pause' : 'hud');
 }
 function toMenu() {
+  LB.cancelRun();
   audio.wake(); audio.stopMusic && audio.stopMusic();
   G.runId = (G.runId || 0) + 1; G.quiz = false; $('quiz').classList.add('hidden'); $('banner').classList.add('hidden');
   G.playing = false; G.paused = false; G.attract = true; G.camPos.set(0, 0, 0);
@@ -710,7 +723,9 @@ const down = () => { if (!G.playing || G.paused) return; G.press = true; G.hold 
 const lane = (d) => { if (G.playing && !G.paused) G.laneReq = d; };
 const roll = () => { if (G.playing && !G.paused) G.rollReq = true; };
 const up = () => { G.hold = false; };
+const typing = (e) => e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA');
 window.addEventListener('keydown', (e) => {
+  if (typing(e)) return;
   if (G.quiz && !/^Digit/.test(e.code)) return; // answering a question: the game keys wait
   if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); if (!e.repeat) down(); }
   else if ((e.code === 'ArrowLeft' || e.code === 'KeyA') && !e.repeat) { e.preventDefault(); lane(-1); }
@@ -767,7 +782,7 @@ $('snext').onclick = () => stepSong(1);
 let cardX = null;
 $('scard').addEventListener('pointerdown', (e) => { cardX = e.clientX; });
 $('scard').addEventListener('pointerup', (e) => { if (cardX !== null && Math.abs(e.clientX - cardX) > 30) stepSong(e.clientX < cardX ? 1 : -1); cardX = null; });
-window.addEventListener('keydown', (e) => { if (!$('menu').classList.contains('hidden') && !e.repeat) { if (e.code === 'ArrowLeft') stepSong(-1); else if (e.code === 'ArrowRight') stepSong(1); else if (e.code === 'Enter') $('play').click(); } });
+window.addEventListener('keydown', (e) => { if (!typing(e) && !$('menu').classList.contains('hidden') && $('namebox').classList.contains('hidden') && $('ranks').classList.contains('hidden') && !e.repeat) { if (e.code === 'ArrowLeft') stepSong(-1); else if (e.code === 'ArrowRight') stepSong(1); else if (e.code === 'Enter') $('play').click(); } });
 // settings sheet
 $('settingsbtn').onclick = () => $('settings').classList.remove('hidden');
 $('settingsclose').onclick = () => $('settings').classList.add('hidden');
@@ -782,7 +797,69 @@ function phoneFullscreen() {
     Promise.resolve(req.call(el, { navigationUI: 'hide' })).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {})).catch(() => {});
   }
 }
-$('play').onclick = () => { phoneFullscreen(); start(G.sel); };
+// first PLAY without a gamer name: ask once (it can be skipped and set later from the menu)
+$('play').onclick = () => {
+  phoneFullscreen();
+  let asked = false; try { asked = !!localStorage.getItem('faithdash3d.nameasked'); } catch { /* fine */ }
+  if (!LB.player().name && !asked) { try { localStorage.setItem('faithdash3d.nameasked', '1'); } catch { /* fine */ } openName(() => start(G.sel)); return; }
+  start(G.sel);
+};
+
+// ---------- gamer name ----------
+let nameAfter = null;
+function showName() { const n = LB.player().name; $('pname').textContent = n || 'SET NAME'; }
+function openName(after) {
+  nameAfter = after || null;
+  $('nameinput').value = LB.player().name || ''; $('nameerr').textContent = '';
+  $('namecancel').textContent = after ? 'SKIP' : 'CANCEL';
+  $('namebox').classList.remove('hidden'); setTimeout(() => $('nameinput').focus(), 50);
+}
+function closeName() { $('namebox').classList.add('hidden'); const f = nameAfter; nameAfter = null; if (f) f(); }
+async function saveName() {
+  $('namesave').disabled = true; $('nameerr').textContent = '';
+  const r = await LB.setName($('nameinput').value);
+  $('namesave').disabled = false;
+  if (!r.ok) { $('nameerr').textContent = r.error; return; }
+  showName(); closeName();
+}
+$('namebtn').onclick = () => openName();
+$('namesave').onclick = saveName;
+$('namecancel').onclick = closeName;
+$('nameinput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveName(); else if (e.key === 'Escape') closeName(); });
+showName();
+
+// ---------- leaderboard ----------
+let boardSong = 'drop';
+for (const s of SONG_IDS) { const b = document.createElement('button'); b.textContent = SONGS[s].replace('Arcade ', ''); b.dataset.s = s; b.onclick = () => showBoard(s); $('rseg').appendChild(b); }
+function rows(list) {
+  const ol = $('rlist'); ol.innerHTML = '';
+  let prev = 0;
+  for (const r of list) {
+    if (r.rank > prev + 1 && prev) { const g = document.createElement('li'); g.className = 'gap'; g.textContent = '⋯'; ol.appendChild(g); }
+    const li = document.createElement('li'); if (r.me) li.className = 'me';
+    const rk = document.createElement('span'); rk.className = 'rk'; rk.textContent = '#' + r.rank;
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.name; // textContent: names are never treated as HTML
+    const sm = document.createElement('small'); sm.textContent = r.reached || ''; nm.appendChild(sm);
+    const sc = document.createElement('span'); sc.className = 'sc'; sc.textContent = pad(r.score);
+    li.append(rk, nm, sc); ol.appendChild(li); prev = r.rank;
+  }
+  if (!list.length) { const li = document.createElement('li'); li.className = 'gap'; li.textContent = 'No scores yet. Be the first!'; ol.appendChild(li); }
+}
+async function showBoard(song) {
+  boardSong = song;
+  for (const b of $('rseg').children) b.classList.toggle('on', b.dataset.s === song);
+  const local = LB.localBoard(song);
+  if (!LB.online()) { $('rstatus').textContent = 'Online leaderboard not connected yet. These are your best runs on this device.'; rows(local); return; }
+  $('rstatus').textContent = 'Loading…'; $('rlist').innerHTML = '';
+  const r = await LB.onlineBoard(song);
+  if (boardSong !== song) return;
+  if (r.ok) { $('rstatus').textContent = LB.player().name ? 'Best score of each player' : 'Set a gamer name to join the board'; rows(r.rows); }
+  else { $('rstatus').textContent = 'Could not reach the leaderboard. Your runs on this device:'; rows(local); }
+}
+function openBoard(song) { $('ranks').classList.remove('hidden'); showBoard(song || G.sel); }
+$('ranksbtn').onclick = () => openBoard(G.sel);
+$('o-ranks').onclick = () => openBoard(G.level ? G.level.song : G.sel);
+$('ranksclose').onclick = () => $('ranks').classList.add('hidden');
 $('pausebtn').onclick = () => pause(true);
 $('resume').onclick = () => pause(false);
 $('restart').onclick = () => { audio.wake(); audio.stopMusic && audio.stopMusic(); G.paused = false; G.playing = false; start(G.sel); };
