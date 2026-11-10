@@ -3,30 +3,193 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <title>Faith Dash 3D (test)</title>
+  <meta name="theme-color" content="#0a0820" />
+  <title>Faith Dash 3D</title>
   <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Manrope:wght@400;600;700&display=swap" rel="stylesheet" />
   <style>
-    html, body { margin: 0; height: 100%; background: #0a0820; overflow: hidden; font-family: system-ui, sans-serif; color: #fff; touch-action: none; user-select: none; }
+    :root { --mint: #9ff5d2; --gold: #ffd98a; --ink: #0a0820; --line: rgba(255,255,255,.14); --dim: rgba(225,232,255,.7); }
+    html, body { margin: 0; height: 100%; background: var(--ink); overflow: hidden; font-family: Manrope, system-ui, sans-serif; color: #fff; touch-action: none; user-select: none; -webkit-user-select: none; }
     #c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-    #menu, #msg { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; background: rgba(10, 8, 32, 0.82); }
-    #msg { background: none; pointer-events: none; font-size: 48px; font-weight: 800; text-shadow: 0 2px 12px #000; }
-    button { font-size: 20px; padding: 12px 28px; border-radius: 10px; border: 0; background: #ffd23a; color: #1a1033; font-weight: 700; cursor: pointer; }
-    #hud { position: fixed; left: 12px; top: 10px; font-size: 14px; opacity: 0.85; text-shadow: 0 1px 4px #000; pointer-events: none; }
-    #bar { position: fixed; left: 0; top: 0; height: 4px; background: #ffd23a; width: 0; }
     .hidden { display: none !important; }
-    small { opacity: 0.7; max-width: 520px; }
+    .cond { font-family: 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .02em; }
+    .eyebrow { font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--mint); font-weight: 600; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+
+    /* ---------- intro video ---------- */
+    #intro { position: fixed; inset: 0; background: #000; z-index: 30; display: flex; align-items: center; justify-content: center; transition: opacity .8s; }
+    #intro video { width: 100%; height: 100%; object-fit: cover; }
+    #intro.fade { opacity: 0; pointer-events: none; }
+    .introbar { position: absolute; right: 18px; bottom: 18px; display: flex; gap: 10px; }
+    .ghost { background: rgba(10,8,32,.55); border: 1px solid var(--line); border-radius: 999px; padding: 9px 16px; font-size: 13px; font-weight: 600; backdrop-filter: blur(8px); }
+
+    /* ---------- menu ---------- */
+    #menu { position: fixed; inset: 0; z-index: 10; background: linear-gradient(90deg, rgba(8,6,28,.86) 0%, rgba(8,6,28,.55) 34%, rgba(8,6,28,0) 60%); }
+    .topbar { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; letter-spacing: .14em; }
+    .tag3d { border: 1px solid var(--mint); color: var(--mint); font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+    .follow { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .2em; color: var(--dim); }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 10px var(--mint); }
+    .panel { position: absolute; left: 32px; top: 70px; bottom: 24px; width: min(460px, calc(100vw - 32px)); display: flex; flex-direction: column; justify-content: center; gap: 14px; }
+    .panel img { width: min(270px, 62vw); filter: drop-shadow(0 6px 24px rgba(255,170,60,.35)); animation: float 4s ease-in-out infinite; }
+    @keyframes float { 50% { transform: translateY(-6px); } }
+    h1 { margin: 0; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: clamp(36px, 5vw, 54px); line-height: 1.02; text-shadow: 0 4px 24px rgba(0,0,0,.5); }
+    h1 span { color: var(--gold); display: block; }
+    .lede { margin: 0; color: var(--dim); font-size: 14px; line-height: 1.6; }
+    .songs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .song { background: rgba(255,255,255,.06); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; text-align: left; display: flex; flex-direction: column; gap: 2px; transition: .2s; }
+    .song i { font-style: normal; font-weight: 700; font-size: 13px; }
+    .song small { font-size: 10px; color: var(--dim); letter-spacing: .08em; text-transform: uppercase; }
+    .song.on { border-color: var(--mint); background: rgba(159,245,210,.12); box-shadow: 0 0 18px rgba(159,245,210,.2); }
+    .row { display: flex; gap: 10px; align-items: stretch; }
+    #play { flex: 0 1 auto; background: var(--mint); color: #0b2a22; border: 0; border-radius: 10px; padding: 18px 26px; font-weight: 700; font-size: 13px; letter-spacing: .1em; outline: 3px solid rgba(159,245,210,.35); outline-offset: 4px; display: flex; gap: 24px; align-items: center; box-shadow: 0 0 28px rgba(159,245,210,.35); }
+    #play:hover { filter: brightness(1.08); }
+    .sec { background: rgba(10,8,32,.4); border: 1px solid var(--line); border-radius: 10px; padding: 0 18px; font-size: 13px; font-weight: 700; }
+    .keys { display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--dim); flex-wrap: wrap; }
+    kbd { font-family: inherit; border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; font-size: 10px; font-weight: 700; color: #fff; background: rgba(255,255,255,.05); }
+    .lvlname { position: absolute; right: 30px; bottom: 60px; text-align: right; }
+    .lvlname b { display: block; font-family: 'Barlow Condensed', sans-serif; font-size: clamp(26px, 3.4vw, 40px); letter-spacing: .08em; font-weight: 600; text-shadow: 0 2px 16px rgba(0,0,0,.6); }
+    .lvlname small { font-size: 10px; letter-spacing: .2em; color: var(--dim); }
+
+    /* ---------- in-game HUD ---------- */
+    #hud { position: fixed; inset: 0; z-index: 5; }
+    .hudtop { position: absolute; left: 0; right: 0; top: 0; padding: 14px 22px 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; background: linear-gradient(rgba(6,4,20,.55), rgba(6,4,20,0)); pointer-events: none; }
+    .hudtop .l small { font-size: 10px; letter-spacing: .18em; color: var(--dim); display: block; }
+    .hudtop .l b { font-family: 'Barlow Condensed', sans-serif; font-size: 34px; font-weight: 600; letter-spacing: .04em; }
+    .stats { display: flex; gap: 26px; align-items: flex-start; }
+    .stat { text-align: center; }
+    .stat small { display: block; font-size: 9px; letter-spacing: .2em; color: var(--dim); margin-bottom: 2px; }
+    .stat b { font-family: 'Barlow Condensed', sans-serif; font-size: 28px; font-weight: 600; }
+    #h-lives { color: #ffb0c4; font-size: 20px; } #h-lives b { color: #ff7a9a; font-size: 16px; }
+    #h-mult { color: var(--gold); font-size: 30px; display: block; text-shadow: 0 0 14px rgba(255,200,90,.6); }
+    #h-streak { font-size: 9px; letter-spacing: .18em; color: var(--dim); }
+    #pausebtn { pointer-events: auto; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line); background: rgba(10,8,32,.5); font-weight: 700; }
+    .progress { position: absolute; left: 22px; right: 22px; top: 76px; height: 3px; background: rgba(255,255,255,.12); border-radius: 2px; pointer-events: none; }
+    #h-prog { height: 100%; width: 0; background: var(--mint); border-radius: 2px; box-shadow: 0 0 10px var(--mint); }
+    #h-flavor { position: absolute; left: 0; right: 0; top: 94px; text-align: center; font-size: 11px; letter-spacing: .22em; color: var(--mint); pointer-events: none; }
+    .rhythm { position: absolute; right: 22px; top: 96px; width: 180px; pointer-events: none; }
+    .rhythm small { font-size: 9px; letter-spacing: .2em; color: var(--dim); display: flex; justify-content: space-between; align-items: center; }
+    #h-beat { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 12px var(--gold); }
+    .meter { margin-top: 6px; height: 4px; background: rgba(255,255,255,.12); border-radius: 2px; overflow: hidden; }
+    #h-meter { height: 100%; width: 0; background: linear-gradient(90deg, var(--mint), var(--gold)); transition: width .15s; }
+    .next { position: absolute; left: 0; right: 0; bottom: 34px; text-align: center; pointer-events: none; text-shadow: 0 2px 12px rgba(0,0,0,.6); }
+    .next small { font-size: 9px; letter-spacing: .24em; color: var(--dim); }
+    #h-move { font-family: 'Barlow Condensed', sans-serif; font-size: 34px; font-weight: 600; letter-spacing: .06em; display: block; }
+    #h-when { font-size: 10px; letter-spacing: .14em; color: var(--dim); }
+    .hint { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; font-size: 9px; letter-spacing: .2em; color: rgba(255,255,255,.45); pointer-events: none; }
+    .rating { position: absolute; left: 0; right: 0; top: 36%; text-align: center; font-family: 'Barlow Condensed', sans-serif; font-size: 40px; font-weight: 700; letter-spacing: .1em; opacity: 0; transform: scale(.8); transition: opacity .15s, transform .15s; pointer-events: none; }
+    .rating.show { opacity: 1; transform: scale(1); }
+    .rating.perfect { color: var(--gold); text-shadow: 0 0 24px rgba(255,210,100,.9); }
+    .rating.great { color: var(--mint); text-shadow: 0 0 20px rgba(159,245,210,.8); }
+    .rating.good { color: #cfd6ff; } .rating.off { color: #ff8aa0; font-size: 26px; }
+    /* lane / roll controls: arrow buttons (always on touch screens) and a swipe strip that never jumps */
+    #pad { position: absolute; left: 0; right: 0; bottom: 0; height: 0; display: flex; justify-content: space-between; align-items: flex-end; padding: 0 16px 16px; pointer-events: none; }
+    #pad button { pointer-events: auto; width: 62px; height: 62px; border-radius: 50%; border: 1px solid rgba(159,245,210,.45); background: rgba(10,8,32,.45); color: var(--mint); font-size: 22px; backdrop-filter: blur(6px); display: none; }
+    #pad button:active { background: rgba(159,245,210,.3); }
+    #pad .grp { display: flex; gap: 12px; }
+    @media (pointer: coarse) {
+      #pad { height: 28vh; pointer-events: auto; background: linear-gradient(rgba(0,0,0,0), rgba(6,4,20,.35)); }
+      #pad button { display: block; }
+      .next { bottom: calc(28vh + 6px) !important; }
+      .hint { display: none; }
+    }
+    #msg { position: fixed; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; pointer-events: none; font-family: 'Barlow Condensed', sans-serif; font-size: 64px; font-weight: 700; letter-spacing: .06em; text-shadow: 0 4px 30px rgba(0,0,0,.7); }
+
+    /* ---------- pause / results cards ---------- */
+    .modal { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(6,4,20,.6); backdrop-filter: blur(6px); }
+    .card { background: rgba(16,12,44,.9); border: 1px solid var(--line); border-radius: 16px; padding: 28px 30px; min-width: min(340px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 12px; text-align: center; }
+    .card h2 { margin: 0; font-family: 'Barlow Condensed', sans-serif; font-size: 40px; letter-spacing: .04em; }
+    .card .big { font-family: 'Barlow Condensed', sans-serif; font-size: 54px; color: var(--gold); }
+    .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .grid3 div { border: 1px solid var(--line); border-radius: 10px; padding: 8px; font-size: 10px; letter-spacing: .14em; color: var(--dim); }
+    .grid3 b { display: block; font-size: 22px; color: #fff; font-family: 'Barlow Condensed', sans-serif; letter-spacing: 0; }
+    .btn { background: var(--mint); color: #0b2a22; border: 0; border-radius: 10px; padding: 13px; font-weight: 700; letter-spacing: .08em; font-size: 13px; }
+    .btn.alt { background: rgba(255,255,255,.08); color: #fff; border: 1px solid var(--line); }
+
+    @media (max-width: 720px) {
+      #menu { background: linear-gradient(180deg, rgba(8,6,28,.35), rgba(8,6,28,.85) 55%); }
+      .panel { left: 16px; right: 16px; width: auto; top: auto; bottom: 20px; justify-content: flex-end; gap: 10px; }
+      .lvlname { top: 64px; bottom: auto; right: 16px; }
+      .topbar { padding: 14px 16px; } .follow { display: none; }
+      .lede { font-size: 13px; }
+      .stats { gap: 14px; } .stat b { font-size: 22px; } #h-mult { font-size: 22px; }
+      .hudtop { padding: 10px 12px 0; } .hudtop .l b { font-size: 24px; }
+      .stat.coins { display: none; }
+      .rhythm { width: 120px; right: 12px; } .progress { left: 12px; right: 12px; top: 64px; }
+    }
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
-  <div id="bar"></div>
-  <div id="hud"></div>
-  <div id="msg" class="hidden"></div>
-  <div id="menu">
-    <h1 style="margin:0">Faith Dash 3D <span style="font-size:16px;opacity:.7">test build</span></h1>
-    <small>Milestone 1: the same game rules and music timing, drawn in 3D with a camera behind the runner. Tap, click or press Space to jump (hold for fly and wave). Press C to switch between the behind-the-runner camera and a drone-style side camera.</small>
-    <div id="levels" style="display:flex;gap:10px"></div>
+
+  <div id="intro">
+    <video id="introvid" src="./intro.mp4" playsinline muted preload="auto"></video>
+    <div class="introbar">
+      <button class="ghost" id="sound">🔊 Enable sound</button>
+      <button class="ghost" id="skip">Skip intro ›</button>
+    </div>
   </div>
+
+  <div id="menu">
+    <div class="topbar">
+      <div class="brand"><span>✦</span> FAITH DASH <span class="tag3d">3D</span></div>
+      <div class="follow"><span class="dot"></span> FOLLOW THE MUSIC <button class="ghost" id="replay" style="margin-left:10px">▶ Watch intro</button></div>
+    </div>
+    <div class="panel">
+      <div class="eyebrow">One path. Your soundtrack.</div>
+      <img alt="Faith Dash" />
+      <h1>Find your rhythm.<span>Leap into the light.</span></h1>
+      <p class="lede">A world in motion. A path with purpose.<br />Tap to jump. Swipe to change lanes or roll. Keep the beat to multiply your score.</p>
+      <div class="eyebrow" style="margin-top:4px">Choose your song</div>
+      <div class="songs" id="songs"></div>
+      <div class="row">
+        <button id="play">PLAY</button>
+        <button class="sec" id="camtoggle">Camera: chase</button>
+      </div>
+      <div class="keys"><kbd>SPACE</kbd> jump · <kbd>← →</kbd> lanes · <kbd>↓</kbd> roll · <kbd>HOLD</kbd> fly · <kbd>P</kbd> pause</div>
+    </div>
+    <div class="lvlname"><small class="eyebrow" style="color:var(--mint)">Your path</small><b id="m-level"></b><small id="m-sub"></small></div>
+  </div>
+
+  <div id="hud" class="hidden">
+    <div class="hudtop">
+      <div class="l"><small id="h-title"></small><b id="h-sec">INTRO</b></div>
+      <div class="stats">
+        <div class="stat coins"><small>COINS</small><b id="h-coins">0</b></div>
+        <div class="stat"><small>LIVES</small><b id="h-lives"></b></div>
+        <div class="stat"><b id="h-mult">×1.00</b><span id="h-streak">0 BEAT STREAK</span></div>
+        <div class="stat"><small>TOTAL SCORE</small><b id="h-score">00000</b></div>
+        <button id="pausebtn" aria-label="Pause">II</button>
+      </div>
+    </div>
+    <div class="progress"><div id="h-prog"></div></div>
+    <div id="h-flavor">FORWARD IN FAITH</div>
+    <div class="rhythm"><small>BUILD YOUR RHYTHM <span id="h-beat"></span></small><div class="meter"><div id="h-meter"></div></div></div>
+    <div id="rating" class="rating"></div>
+    <div class="next"><small>NEXT MOVE</small><b id="h-move">JUMP ↑</b><span id="h-when"></span></div>
+    <div class="hint">SPACE JUMP · ← → CHANGE LANE · ↓ ROLL · HOLD TO FLY · P PAUSE</div>
+    <div id="pad"><div class="grp"><button data-k="L" aria-label="Left lane">◀</button><button data-k="R" aria-label="Right lane">▶</button></div><button data-k="D" aria-label="Roll">▼</button></div>
+  </div>
+  <div id="msg" class="hidden"></div>
+
+  <div id="pause" class="modal hidden"><div class="card">
+    <h2>Paused</h2>
+    <button class="btn" id="resume">RESUME</button>
+    <button class="btn alt" id="restart">RESTART</button>
+    <button class="btn alt" id="quit">MAIN MENU</button>
+  </div></div>
+
+  <div id="over" class="modal hidden"><div class="card">
+    <h2 id="o-title"></h2>
+    <div class="eyebrow" id="o-sub" style="color:var(--dim)"></div>
+    <div class="big" id="o-score">00000</div>
+    <div class="grid3"><div>PROGRESS<b id="o-prog"></b></div><div>BEST STREAK<b id="o-best"></b></div><div>COINS<b id="o-coins"></b></div></div>
+    <button class="btn" id="again">PLAY AGAIN</button>
+    <button class="btn alt" id="menubtn">MAIN MENU</button>
+  </div></div>
+
   <script type="module" src="/src/three/main3d.js"></script>
 </body>
 </html>
