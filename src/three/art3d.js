@@ -9,6 +9,7 @@ import stoneUrl from '../assets/tex0.jpg';
 import brickUrl from '../assets/tex1.jpg';
 import coinUrl from '../assets/coin.webp';
 import { MODE } from '../game/sim.js';
+import { makeGlint, vortexMaterial } from './fx3d.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -18,7 +19,7 @@ import sawUrl from '../assets/models/saw.glb?url';
 import portalUrl from '../assets/models/portal.glb?url';
 import coinGlbUrl from '../assets/models/coin.glb?url';
 import platformUrl from '../assets/models/platform.glb?url';
-import barrierUrl from '../assets/models/barrier.glb?url';
+import hurdleUrl from '../assets/models/hurdle.glb?url';
 import gateUrl from '../assets/models/gate.glb?url';
 import island1Url from '../assets/models/island1.glb?url';
 import island2Url from '../assets/models/island2.glb?url';
@@ -51,13 +52,13 @@ function canvasTex(size, draw, srgb = true) {
 // Loaded once, before the first level is built. Every builder below uses its model when it loaded, or falls back to
 // the simple code-built shape.
 export const ASSETS = {};
-const GLB = { crystals: crystalsUrl, saw: sawUrl, portal: portalUrl, coin: coinGlbUrl, platform: platformUrl, barrier: barrierUrl, gate: gateUrl, island1: island1Url, island2: island2Url, island3: island3Url };
+const GLB = { crystals: crystalsUrl, saw: sawUrl, portal: portalUrl, coin: coinGlbUrl, platform: platformUrl, hurdle: hurdleUrl, gate: gateUrl, island1: island1Url, island2: island2Url, island3: island3Url };
 function prepModel(m) {
   m.traverse((o) => {
     if (!o.isMesh || !o.material) return;
     const mt = o.material;
     mt.emissiveIntensity *= 0.2;          // Blender emission strengths are far brighter in a live game with glow
-    if (mt.metalness > 0.9) mt.envMapIntensity = 0.45;
+    if (mt.metalness > 0.9) mt.envMapIntensity = 1.0; // they reflect the sky now (fx3d.skyEnvCanvas)
     if (mt.transparent) mt.depthWrite = false;
   });
   return m;
@@ -79,13 +80,20 @@ function modelParts(m) {
   });
   return [...by].map(([mat, gs]) => ({ mat, geo: gs.length > 1 ? mergeGeometries(gs, false) : gs[0] }));
 }
+// Copies are split into chunks of road (CHUNK tiles long) so the browser can skip every chunk that is off screen or
+// lost in the fog: on a phone that is the difference between drawing the whole course and drawing the next few seconds.
+export const CHUNK = 80;
 export function instanceModel(root, model, mats) {
+  const chunks = new Map();
+  for (const m4 of mats) { const c = Math.floor(-m4.elements[14] / CHUNK); if (!chunks.has(c)) chunks.set(c, []); chunks.get(c).push(m4); }
   for (const { mat, geo } of modelParts(model)) {
     if (!geo) continue;
-    const im = new THREE.InstancedMesh(geo, mat, mats.length);
-    mats.forEach((m4, i) => im.setMatrixAt(i, m4));
-    im.frustumCulled = false;
-    root.add(im);
+    for (const list of chunks.values()) {
+      const im = new THREE.InstancedMesh(geo, mat, list.length);
+      list.forEach((m4, i) => im.setMatrixAt(i, m4));
+      im.computeBoundingSphere(); im.frustumCulled = true;
+      root.add(im);
+    }
   }
 }
 const place = (o, x, y, z, ry, sx, sy = sx, sz = sx, rx = 0) => { o.position.set(x, y, z); o.rotation.set(rx, ry, 0); o.scale.set(sx, sy, sz); o.updateMatrix(); return o.matrix.clone(); };
@@ -122,9 +130,20 @@ function tiledBox(w, h, d, tile, sideTop = false) {
 // ---------------------------------------------------------------- sky
 // The painted panorama fills the screen behind everything (it can never show an edge). The game drifts it sideways as
 // the camera moves, so it feels far away. Once loaded, its cloud colour is handed to the fog so islands fade into it.
+// an 8K version of the sky (src/assets/bg0_8k.jpg or .webp) is used on Ultra quality, if it exists
+const SKY_HI = Object.values(import.meta.glob('../assets/bg0_8k.*', { eager: true, query: '?url', import: 'default' }))[0] || null;
+let skyHi = false, skyTex = null, skyTheme = null;
+export function setSkyQuality(ultra) {
+  if (skyHi === ultra) return;
+  skyHi = ultra;
+  if (skyTex && SKY_HI) loader.load(ultra ? SKY_HI : skyTheme.bg, (tt) => { skyTex.image = tt.image; skyTex.userData.aspect = tt.image.width / tt.image.height; skyTex.needsUpdate = true; });
+}
+export const hasSkyHi = () => !!SKY_HI;
 export function makeSky(theme) {
-  const t = loader.load(theme.bg, (tt) => apply(tt.image));
-  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.MirroredRepeatWrapping;
+  skyTheme = theme;
+  const t = loader.load(skyHi && SKY_HI ? SKY_HI : theme.bg, (tt) => apply(tt.image));
+  t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.MirroredRepeatWrapping; t.anisotropy = 8;
+  skyTex = t;
   function apply(img) {
     t.userData.aspect = img.width / img.height;
     const c = document.createElement('canvas'); c.width = 64; c.height = 8;
@@ -132,7 +151,7 @@ export function makeSky(theme) {
     const d = x.getImageData(0, 0, 64, 8).data; let r = 0, gg = 0, b = 0;
     for (let i = 0; i < d.length; i += 4) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; }
     const n = d.length / 4, col = new THREE.Color().setRGB(r / n / 255, gg / n / 255, b / n / 255, THREE.SRGBColorSpace);
-    if (onSkyColor) onSkyColor(col);
+    if (onSkyColor) onSkyColor(col, img);
   }
   return t;
 }
@@ -304,11 +323,13 @@ export function buildScenery(lv, root, theme) {
 
 // ---------------------------------------------------------------- hazards
 // One spike tile = a little cluster of crystals across the track width.
-export function buildSpikes(lv, root, M) {
+// lanesOf(spike) -> the lanes it blocks (undefined = the whole road). Crystals are drawn only in those lanes.
+export function buildSpikes(lv, root, M, lanesOf = () => undefined) {
+  const ALL = [-1, 0, 1];
   const parts = [[], [], []];
   const r = rng(lv.id * 131);
-  const put = (x, y, down, cls) => {
-    for (let k = -1; k <= 1; k++) {
+  const put = (x, y, down, cls, lanes = ALL) => {
+    for (const k of lanes) {
       const c = (k + 1 + Math.floor(x)) % 3;
       const h = 0.55 + r() * 0.3, w = 0.18 + r() * 0.08;
       parts[c].push([k * TRACK_W / 3.2 + (r() - 0.5) * 0.15, y, -(x + 0.5) + (r() - 0.5) * 0.2, w, h, down, (r() - 0.5) * 0.35]);
@@ -321,11 +342,11 @@ export function buildSpikes(lv, root, M) {
   if (ASSETS.crystals) {
     // Blender crystal clusters: one per lane of every spike tile
     const o = new THREE.Object3D(), mats = [];
-    for (const s of lv.spikes) for (let k = -1; k <= 1; k++) mats.push(place(o, k * TRACK_W / 3 + (r() - 0.5) * 0.12, s.y, -(s.x + 0.5) + (r() - 0.5) * 0.15, r() * 6.3, 0.95 + r() * 0.2, 0.9 + r() * 0.25, 0.95 + r() * 0.2, s.down ? Math.PI : 0));
+    for (const s of lv.spikes) for (const k of lanesOf(s) || ALL) mats.push(place(o, k * TRACK_W / 3 + (r() - 0.5) * 0.12, s.y, -(s.x + 0.5) + (r() - 0.5) * 0.15, r() * 6.3, 0.95 + r() * 0.2, 0.9 + r() * 0.25, 0.95 + r() * 0.2, s.down ? Math.PI : 0));
     if (mats.length) instanceModel(root, ASSETS.crystals, mats);
     return;
   }
-  for (const s of lv.spikes) put(s.x, s.y, !!s.down);
+  for (const s of lv.spikes) put(s.x, s.y, !!s.down, null, lanesOf(s) || ALL);
   const g = new THREE.ConeGeometry(1, 1, 5); g.translate(0, 0.5, 0);
   const o = new THREE.Object3D();
   parts.forEach((list, c) => {
@@ -338,11 +359,11 @@ export function buildSpikes(lv, root, M) {
   });
 }
 
-export function makePulse(s, M) {
+export function makePulse(s, M, lanes = [-1, 0, 1]) {
   const g = new THREE.Group();
   const geo = new THREE.ConeGeometry(1, 1, 5); geo.translate(0, 0.5, 0);
-  for (let i = 0; i < s.n; i++) for (let k = -1; k <= 1; k++) {
-    const c = new THREE.Mesh(geo, M.crystal[2]); c.position.set(k * TRACK_W / 3.2, 0, -(i + 0.5)); c.scale.set(0.2, 0.7, 0.2); g.add(c);
+  for (let i = 0; i < s.n; i++) for (const k of lanes) {
+    const c = new THREE.Mesh(geo, M.crystal[2]); c.position.set(k * TRACK_W / 3, 0, -(i + 0.5)); c.scale.set(0.2, 0.7, 0.2); g.add(c);
   }
   return g;
 }
@@ -387,9 +408,10 @@ export function makePlatform(pl, M) {
 // ---------------------------------------------------------------- pick-ups and gates
 export function makeCoin(M, size = 0.75) {
   const g = new THREE.Group();
-  if (ASSETS.coin) { const m = ASSETS.coin.clone(); m.scale.setScalar(size / 0.75); g.add(m); return g; }
+  const gl = makeGlint(2.0 * size / 0.75); gl.position.z = 0.12; g.userData.glint = gl; // twinkle (animated in main3d.js)
+  if (ASSETS.coin) { const m = ASSETS.coin.clone(); m.scale.setScalar(size / 0.75); g.add(m, gl); return g; }
   const c = new THREE.Mesh(new THREE.CylinderGeometry(size, size, 0.12, 40), [M.gold, M.coinFace, M.coinFace]);
-  c.rotation.x = Math.PI / 2; g.add(c);
+  c.rotation.x = Math.PI / 2; g.add(c, gl);
   return g;
 }
 
@@ -416,36 +438,43 @@ export function makePortal(m, M) {
   if (ASSETS.portal) g.add(ASSETS.portal.clone());
   else { const frame = new THREE.Mesh(new THREE.TorusGeometry(R, 0.24, 10, 48), M.darkMetal); g.add(frame); }
   const rim = new THREE.Mesh(new THREE.TorusGeometry(R - 0.2, 0.06, 6, 48), new THREE.MeshBasicMaterial({ color: col, toneMapped: false })); g.add(rim);
-  const disc = new THREE.Mesh(new THREE.CircleGeometry(R - 0.22, 40), new THREE.MeshBasicMaterial({ map: swirl(), color: col, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(R - 0.22, 48), vortexMaterial(col)); // swirling energy (fx3d.js)
   g.add(disc);
   if (!ASSETS.portal) for (let i = 0; i < 4; i++) { const st = new THREE.Mesh(new THREE.OctahedronGeometry(0.16), new THREE.MeshBasicMaterial({ color: col, toneMapped: false })); const a = i * Math.PI / 2 + Math.PI / 4; st.position.set(Math.cos(a) * R, Math.sin(a) * R, 0.1); g.add(st); }
   return { g, disc };
 }
 
 // ---------------------------------------------------------------- lane obstacles (see lanes.js)
-// barrier: one tall block per blocked lane (too tall to jump), so the runner changes lane
-export function makeBarrier(M, lanes, laneW, H) {
+// Each lane obstacle covers 1 or 2 lanes (one model per blocked lane); the open lane is always free.
+// gate: a beam at head height with an energy wall above it -> roll under it or change lane (too tall to jump)
+export function makeGate(M, lanes, laneW, gateY) {
   const g = new THREE.Group();
   for (const ln of lanes) {
-    let b;
-    if (ASSETS.barrier) { b = ASSETS.barrier.clone(); b.scale.set((laneW * 0.92) / 1.1, H / 2.6, 1); }
+    let q;
+    if (ASSETS.gate) { q = ASSETS.gate.clone(); q.scale.x = laneW / 1.2; }
     else {
-      b = new THREE.Group();
-      const block = new THREE.Mesh(new RoundedBoxGeometry(laneW * 0.92, H, 0.9, 3, 0.06), M.side); block.position.y = H / 2; b.add(block);
-      const rune = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), M.hot); rune.position.set(0, H / 2, 0.47); rune.scale.z = 0.3; b.add(rune);
+      q = new THREE.Group();
+      for (const sx of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.9, 0.3), M.darkMetal); p.position.set(sx * laneW * 0.47, 1.45, 0); q.add(p); }
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, laneW * 0.94, 16), M.laser); beam.rotation.z = Math.PI / 2; beam.position.y = gateY + 0.12; q.add(beam);
+      const field = new THREE.Mesh(new THREE.PlaneGeometry(laneW * 0.9, 2.0), new THREE.MeshBasicMaterial({ color: 0xff2a2a, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false })); field.position.y = 1.8; q.add(field);
     }
-    b.position.x = ln * laneW; g.add(b);
+    q.position.x = ln * laneW; g.add(q);
   }
   return g;
 }
-// gate: a red beam at head height with an energy wall above it; roll under the beam
-export function makeGate(M, gateY) {
-  if (ASSETS.gate) return ASSETS.gate.clone();
+// hurdle: a low crystal block on the road -> jump over it or change lane (it sits on the ground, so rolling fails)
+export function makeHurdle(M, lanes, laneW) {
   const g = new THREE.Group();
-  const W = TRACK_W / 2 + 0.18;
-  for (const sx of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.9, 0.4), M.darkMetal); p.position.set(sx * W, 1.45, 0); g.add(p); }
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2 * W, 16), M.laser); beam.rotation.z = Math.PI / 2; beam.position.y = gateY + 0.12; g.add(beam);
-  const field = new THREE.Mesh(new THREE.PlaneGeometry(2 * W - 0.3, 2.0), new THREE.MeshBasicMaterial({ color: 0xff2a2a, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false })); field.position.y = 1.8; g.add(field);
+  for (const ln of lanes) {
+    let q;
+    if (ASSETS.hurdle) { q = ASSETS.hurdle.clone(); q.scale.x = (laneW * 0.92) / 1.1; }
+    else {
+      q = new THREE.Group();
+      const block = new THREE.Mesh(new RoundedBoxGeometry(laneW * 0.92, 0.62, 0.8, 3, 0.06), M.side); block.position.y = 0.31; q.add(block);
+      const trim = new THREE.Mesh(new THREE.BoxGeometry(laneW * 0.95, 0.08, 0.84), M.gold); trim.position.y = 0.6; q.add(trim);
+    }
+    q.position.x = ln * laneW; g.add(q);
+  }
   return g;
 }
 
@@ -556,7 +585,7 @@ function loadHero() {
       if (!o.isMesh || !o.material) return;
       const mt = o.material;
       mt.emissiveIntensity *= 0.2;            // Blender's emission strengths are much brighter in a live game with glow
-      if (mt.metalness > 0.9) mt.envMapIntensity = 0.4;
+      if (mt.metalness > 0.9) mt.envMapIntensity = 0.85;
       o.castShadow = true;
     });
     paintHero(m, heroSkin);
@@ -658,7 +687,7 @@ export function makeAurora() {
       vec3 col = mix(c1, c2, vUv.y); gl_FragColor = vec4(col * rays * fade * 0.3, 1.0); }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, side: THREE.DoubleSide,
   });
-  const spec = [[0x2dffb3, 0x7a4dff, 0, -230, 70, 0], [0x46e6ff, 0xd04dff, 2.1, -260, 85, -60], [0x2dffb3, 0x4d7aff, 4.3, -240, 60, 90]];
+  const spec = [[0x2dffb3, 0x7a4dff, 0, -190, 60, 0], [0x46e6ff, 0xd04dff, 2.1, -215, 72, -50], [0x2dffb3, 0x4d7aff, 4.3, -200, 52, 70]]; // inside the camera's 320 view distance
   for (const [c1, c2, seed, z, y, x] of spec) {
     const m = new THREE.Mesh(new THREE.PlaneGeometry(420, 90, 120, 1), mat(c1, c2, seed));
     m.position.set(x, y, z); m.renderOrder = -5; m.frustumCulled = false; g.add(m);
@@ -732,7 +761,12 @@ export function bakeStatic(top) {
     m4.multiplyMatrices(inv, o.matrixWorld);
     const mats = Array.isArray(o.material) ? o.material : null;
     const parts = mats && g.groups.length ? g.groups.map((gr) => [sliceGeo(g, gr.start, gr.count), mats[gr.materialIndex]]) : [[sliceGeo(g, 0, g.attributes.position.count), mats ? mats[0] : o.material]];
-    for (const [pg, mat] of parts) { pg.applyMatrix4(m4); if (!buckets.has(mat)) buckets.set(mat, []); buckets.get(mat).push(pg); }
+    const chunk = Math.floor(-m4.elements[14] / CHUNK); // merge per material AND per stretch of road, so far chunks can be skipped
+    for (const [pg, mat] of parts) {
+      pg.applyMatrix4(m4);
+      if (!buckets.has(mat)) buckets.set(mat, new Map());
+      const byC = buckets.get(mat); if (!byC.has(chunk)) byC.set(chunk, []); byC.get(chunk).push(pg);
+    }
     g.dispose(); kill.push(o);
   };
   const walk = (o, first) => {
@@ -742,11 +776,12 @@ export function bakeStatic(top) {
   };
   walk(top, true);
   for (const o of kill) { o.parent.remove(o); }
-  for (const [mat, list] of buckets) {
+  for (const [mat, byC] of buckets) for (const list of byC.values()) {
     for (let i = 0; i < list.length; i += 4000) { // keep each merged mesh a sensible size
       const merged = mergeGeometries(list.slice(i, i + 4000), false);
       if (!merged) continue;
-      const mesh = new THREE.Mesh(merged, mat); mesh.frustumCulled = false; mesh.receiveShadow = true; top.add(mesh);
+      merged.computeBoundingSphere();
+      const mesh = new THREE.Mesh(merged, mat); mesh.frustumCulled = true; mesh.receiveShadow = true; top.add(mesh);
     }
     list.forEach((q) => q.dispose());
   }

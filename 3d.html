@@ -30,6 +30,7 @@
     .topbar { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; justify-content: space-between; padding: 18px 28px; }
     .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 15px; letter-spacing: .14em; }
     .tag3d { border: 1px solid var(--mint); color: var(--mint); font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+    .tright { display: flex; align-items: center; gap: 10px; }
     .follow { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: .2em; color: var(--dim); }
     .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 10px var(--mint); }
     .panel { position: absolute; left: 32px; top: 70px; bottom: 24px; width: min(460px, calc(100vw - 32px)); display: flex; flex-direction: column; justify-content: center; gap: 14px; }
@@ -93,7 +94,7 @@
       #pad { height: 28vh; pointer-events: auto; background: linear-gradient(rgba(0,0,0,0), rgba(6,4,20,.35)); }
       #pad button { display: block; }
       .next { bottom: calc(28vh + 6px) !important; }
-      .hint { display: none; }
+      .hint, .keys { display: none; } /* keyboard hints mean nothing on a touch screen */
     }
     /* customise screen: the 3D hero turns slowly on the right, the picker sits on the left */
     #custom { position: fixed; inset: 0; z-index: 10; background: linear-gradient(90deg, rgba(8,6,28,.85), rgba(8,6,28,.4) 40%, rgba(8,6,28,0) 60%); }
@@ -103,6 +104,21 @@
     .skin { aspect-ratio: 1; border-radius: 14px; border: 2px solid var(--line); background: linear-gradient(135deg, var(--a), var(--b)); box-shadow: inset 0 0 18px rgba(0,0,0,.35); transition: .15s; }
     .skin.on { border-color: var(--mint); box-shadow: 0 0 18px rgba(159,245,210,.45), inset 0 0 18px rgba(0,0,0,.35); transform: scale(1.04); }
     @media (max-width: 720px) { #custom { background: linear-gradient(180deg, rgba(8,6,28,0) 30%, rgba(8,6,28,.9) 60%); } .cpanel { left: 16px; right: 16px; width: auto; top: auto; bottom: 20px; transform: none; } .cpanel h2 { font-size: 32px; } .skins { grid-template-columns: repeat(6, 1fr); gap: 6px; } .skin { border-radius: 10px; } }
+    /* phones: keep everything clear of the notch, rounded corners and the home bar */
+    .topbar { padding-top: max(18px, env(safe-area-inset-top)); padding-left: max(28px, env(safe-area-inset-left)); padding-right: max(28px, env(safe-area-inset-right)); }
+    .hudtop { padding-top: max(14px, env(safe-area-inset-top)); padding-left: max(22px, env(safe-area-inset-left)); padding-right: max(22px, env(safe-area-inset-right)); }
+    #pad { padding-bottom: max(16px, env(safe-area-inset-bottom)); padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+    .panel, .cpanel { left: max(32px, env(safe-area-inset-left)); }
+    /* phones held sideways (short screens): a compact menu and HUD */
+    @media (max-height: 500px) {
+      .panel { top: 48px; bottom: 10px; gap: 7px; width: min(420px, 55vw); }
+      .panel img { width: 150px; } h1 { font-size: 26px; } .lede, .panel .eyebrow:first-child { display: none; }
+      .song { padding: 5px 9px; } #play { padding: 11px 16px; outline-offset: 2px; }
+      .lvlname { bottom: 14px; } .lvlname b { font-size: 22px; }
+      .hudtop .l b { font-size: 22px; } .stat b { font-size: 20px; } #h-mult { font-size: 20px; }
+      .rhythm, #h-flavor { display: none; } .progress { top: 52px; }
+      #h-move { font-size: 24px; } .cpanel h2 { font-size: 28px; }
+    }
     #msg { position: fixed; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; pointer-events: none; font-family: 'Barlow Condensed', sans-serif; font-size: 64px; font-weight: 700; letter-spacing: .06em; text-shadow: 0 4px 30px rgba(0,0,0,.7); }
 
     /* ---------- pause / results cards ---------- */
@@ -143,7 +159,7 @@
   <div id="menu">
     <div class="topbar">
       <div class="brand"><span>✦</span> FAITH DASH <span class="tag3d">3D</span></div>
-      <div class="follow"><span class="dot"></span> FOLLOW THE MUSIC <button class="ghost" id="replay" style="margin-left:10px">▶ Watch intro</button></div>
+      <div class="tright"><div class="follow"><span class="dot"></span> FOLLOW THE MUSIC <button class="ghost" id="replay" style="margin-left:10px">▶ Watch intro</button></div><button class="ghost" id="quality">⚙ Quality: Auto</button></div>
     </div>
     <div class="panel">
       <div class="eyebrow">One path. Your soundtrack.</div>
@@ -195,6 +211,7 @@
   <div id="pause" class="modal hidden"><div class="card">
     <h2>Paused</h2>
     <button class="btn" id="resume">RESUME</button>
+    <button class="btn alt" id="quality2">⚙ Quality: Auto</button>
     <button class="btn alt" id="restart">RESTART</button>
     <button class="btn alt" id="quit">MAIN MENU</button>
   </div></div>

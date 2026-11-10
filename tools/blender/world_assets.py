@@ -143,13 +143,15 @@ def uv_project(o):
             elif abs(nrm.x) > abs(nrm.y): uv[li].uv = (co.y, co.z)
             else: uv[li].uv = (co.x, co.z)
 
-def join(coll, name, angle=32):
+def join(coll, name, angle=32, decimate=None):
     bpy.ops.object.select_all(action='DESELECT')
     obs = [o for o in coll.objects if o.type == 'MESH']
     for o in obs: o.select_set(True)
     bpy.context.view_layer.objects.active = obs[0]
     bpy.ops.object.join()
     o = active(); o.name = name
+    if decimate:  # fewer triangles (phones draw hundreds of islands), same silhouette
+        md = o.modifiers.new('Decimate', 'DECIMATE'); md.ratio = decimate; apply_all(o)
     bpy.ops.object.shade_auto_smooth(angle=math.radians(angle))  # higher angle = rounder, softer shading
     apply_all(o)
     return o
@@ -284,21 +286,34 @@ def build_barrier():
 
 # ================================================================ 7. roll-under gate (spans the 3.6 road; beam bottom at 0.55, energy wall above)
 def build_gate():
+    """One lane wide (1.2). Beam bottom at 0.55: roll under it. The red energy wall above (to 2.9) can't be jumped."""
     c = new_coll('gate')
-    W = 3.6 / 2 + 0.18
-    for sx in (-1, 1):
-        cube(c, (0.3, 0.4, 2.9), (sx * W, 0, 1.45), M['darkSteel'], bev=0.04)
+    W = 0.56
+    for sx in (-1, 1):  # slim striped pylons at the lane edges
+        cube(c, (0.12, 0.3, 2.9), (sx * W, 0, 1.45), M['darkSteel'], bev=0.03)
         for k in range(6):
-            cube(c, (0.31, 0.41, 0.12), (sx * W, 0, 0.3 + k * 0.42), M['warn'] if k % 2 == 0 else M['darkSteel'])
-        cyl(c, 0.12, 0.42, (sx * W, 0, 0.67), M['hot'], 20, rot=(math.radians(90), 0, 0))
-    cyl(c, 0.12, 2 * W, (0, 0, 0.67), M['laser'], 24, rot=(0, math.radians(90), 0))          # the beam you roll under
-    cube(c, (2 * W + 0.3, 0.4, 0.22), (0, 0, 2.9), M['darkSteel'], bev=0.03)                   # top bar
-    cube(c, (2 * W - 0.3, 0.03, 0.04), (0, -0.2, 2.82), M['laser'])
-    cube(c, (2 * W - 0.3, 0.02, 2.0), (0, 0, 1.8), M['field'])                                  # red energy wall above the beam
-    for k in range(3):  # "roll" chevrons pointing down, on the field
-        for side in (-1, 1):
-            cube(c, (0.32, 0.03, 0.06), (-0.9 + k * 0.9 + side * 0.11, -0.03, 1.55 + abs(side) * 0.0 - side * 0.0), M['warn'], rot=(0, math.radians(35 * side), 0))
+            cube(c, (0.125, 0.31, 0.12), (sx * W, 0, 0.3 + k * 0.42), M['warn'] if k % 2 == 0 else M['darkSteel'])
+        cyl(c, 0.1, 0.32, (sx * W, 0, 0.67), M['hot'], 20, rot=(math.radians(90), 0, 0))
+    cyl(c, 0.1, 2 * W, (0, 0, 0.67), M['laser'], 24, rot=(0, math.radians(90), 0))   # the beam you roll under
+    cube(c, (2 * W + 0.12, 0.3, 0.18), (0, 0, 2.9), M['darkSteel'], bev=0.03)          # top bar
+    cube(c, (2 * W - 0.1, 0.03, 0.04), (0, -0.16, 2.84), M['laser'])
+    cube(c, (2 * W - 0.1, 0.02, 2.0), (0, 0, 1.8), M['field'])                         # red energy wall above the beam
+    for side in (-1, 1):  # a "roll" chevron pointing down, on the field
+        cube(c, (0.3, 0.03, 0.06), (side * 0.11, -0.03, 1.5), M['warn'], rot=(0, math.radians(35 * side), 0))
     return join(c, 'Gate')
+
+def build_hurdle():
+    """One lane wide, low (top 0.62 + small crystals to 0.78): jump over it. It sits on the road, so rolling fails."""
+    c = new_coll('hurdle')
+    cube(c, (1.1, 0.8, 0.5), (0, 0, 0.25), M['stone'], bev=0.06)
+    cube(c, (1.14, 0.84, 0.1), (0, 0, 0.55), M['gold'], bev=0.02)
+    for sy in (-1, 1):
+        for k in range(4):  # "jump" chevrons pointing up
+            cube(c, (0.2, 0.03, 0.06), (-0.33 + k * 0.22, sy * 0.41, 0.28), M['warn'], rot=(0, math.radians(-35 if k % 2 else 35), 0))
+        cube(c, (0.9, 0.02, 0.04), (0, sy * 0.415, 0.44), M['neon'])
+    for k, (dx, dy) in enumerate([(-0.35, 0), (0, 0.15), (0.35, -0.1), (0.15, -0.2), (-0.15, 0.2)]):
+        crystal_shard(c, (dx, dy, 0.6), 0.17 + (k % 2) * 0.04, 0.06, (random.uniform(-0.3, 0.3), random.uniform(-0.3, 0.3), 0), M['crystalCyan'] if k % 2 else M['crystal'])
+    return join(c, 'Hurdle')
 
 # ================================================================ 8-10. floating islands (about 2 wide, grass top at z=0)
 def tree_pine(c, x, y, z, s):
@@ -337,7 +352,7 @@ def build_island(kind):
             cyl(c, 0.12, 0.06, (math.cos(a) * 0.55, math.sin(a) * 0.55, h), M['gold'], 12)
         tree_pine(c, 0.0, 0.1, 0, 0.9)
         cube(c, (0.25, 0.02, 1.6), (0.3, -0.93, -0.8), M['water'])
-    return join(c, 'Island%d' % kind, 80)
+    return join(c, 'Island%d' % kind, 80, decimate=0.4)
 
 # ================================================================ 11. road segment (render sheet only; the game draws the road itself)
 def build_road():
@@ -355,7 +370,7 @@ def build_road():
 # ---------------------------------------------------------------- build + export
 assets = []
 for name, fn in (('crystals', build_crystals), ('saw', build_saw), ('portal', build_portal), ('coin', build_coin), ('platform', build_platform),
-                 ('barrier', build_barrier), ('gate', build_gate), ('island1', lambda: build_island(1)), ('island2', lambda: build_island(2)),
+                 ('barrier', build_barrier), ('gate', build_gate), ('hurdle', build_hurdle), ('island1', lambda: build_island(1)), ('island2', lambda: build_island(2)),
                  ('island3', lambda: build_island(3)), ('road', build_road)):
     o = fn()
     if name != 'road': export(o, name)
@@ -366,7 +381,7 @@ if NO_RENDER:
 
 # ---------------------------------------------------------------- 4K showcase sheet
 LAYOUT = {  # name: (x, y, z, scale, rotZ)
-    'road': (0, 1.2, 0, 1.0, 0), 'gate': (0, 1.2, 0, 1.0, 0),
+    'road': (0, 1.2, 0, 1.0, 0), 'gate': (0.6, 1.2, 0, 1.0, 0), 'hurdle': (-0.6, -0.6, 0, 1.0, 0),
     'portal': (-6.2, 3, 2.2, 0.9, 0.25), 'platform': (6.2, 2.5, 0.6, 0.85, -0.35),
     'barrier': (3.2, -1.2, 0, 1.0, -0.3), 'saw': (-3.2, -1.4, 1.1, 0.95, 0.35),
     'coin': (-0.2, -2.6, 0.95, 1.1, 0.3), 'crystals': (1.5, -3.2, 0, 1.6, 0),
